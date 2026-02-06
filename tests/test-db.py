@@ -1,5 +1,5 @@
 from controllers.database import connect, init_db, add_song
-from controllers.match import recognize
+from controllers.match_service import recognize
 
 conn = connect(":memory:")
 init_db(conn)

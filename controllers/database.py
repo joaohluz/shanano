@@ -21,14 +21,3 @@ def init_db(conn):
     cur.execute("CREATE INDEX IF NOT EXISTS idx_hash ON fingerprints(hash)")
     conn.commit()
 
-def add_song(conn, name, fingerprints):
-    cur = conn.cursor()
-    cur.execute("INSERT INTO songs (name) VALUES (?)", (name,))
-    song_id = cur.lastrowid
-
-    cur.executemany(
-    "INSERT INTO fingerprints (hash, song_id, offset) VALUES (?, ?, ?)",
-    [(str(h), int(song_id), int(offset)) for h, offset in fingerprints]
-    )
-
-    conn.commit()

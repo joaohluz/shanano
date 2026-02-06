@@ -5,7 +5,7 @@ from audio_processing.audio import load_audio
 from audio_processing.spectrogram import spectrogram, find_peaks
 from controllers.database import connect, init_db, add_song
 from controllers.fingerprint import generate_fingerprints
-from controllers.match import recognize
+from controllers.match_service import recognize
 
 
 # clean waves in data/clean_wavs
