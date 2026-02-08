@@ -5,14 +5,16 @@ import time
 
 from audio_processing.audio import record_audio, load_audio
 from audio_processing.spectrogram import spectrogram, find_peaks
-from controllers.database import connect, init_db, add_song
+from controllers.database import connect, init_db
 from controllers.fingerprint import generate_fingerprints
-from controllers.match_service import recognize
+from controllers.match_service import MatchService
+from controllers.song_manager import persist_song_data
 
 # -------------------------------
 # Setup DB (in memory)
 # -------------------------------
-conn = connect(":memory:")
+# conn = connect(":memory:")
+conn = connect()
 init_db(conn)
 
 # -------------------------------
@@ -27,12 +29,17 @@ if not clean_folder.exists():
     print(f"Error: Folder {clean_folder} does not exist.")
     exit(1)
 for wav_path in clean_folder.glob("*.wav"):
-    print(f"Processing {wav_path.name}...")
+    start_time = time.time()
+    print(f"{time.strftime('%H:%M:%S')} Start processing {wav_path.name}...")
     y, sr = load_audio(wav_path.as_posix())
-    S_db = spectrogram(y, sr)
+    print(f"{time.strftime('%H:%M:%S')} Loaded {wav_path.name}...")
+    S_db = spectrogram(y)
+    print(f"{time.strftime('%H:%M:%S')} Processed spectrogram for {wav_path.name}...")
     peaks = find_peaks(S_db)
+    print(f"{time.strftime('%H:%M:%S')} Processed peaks for {wav_path.name}...")
     fps = generate_fingerprints(peaks)
-    add_song(conn, wav_path.stem, fps)
+    print(f"{time.strftime('%H:%M:%S')} Processed fingerprints for {wav_path.name}...")
+    persist_song_data(conn, wav_path.stem, fps)
     song_fps[wav_path.stem] = fps
     song_ids.append(wav_path.stem)
     print(f"Added {wav_path.stem}, {len(fps)} fingerprints")
@@ -42,11 +49,12 @@ for wav_path in clean_folder.glob("*.wav"):
 # -------------------------------
 for i in range(3, 0, -1):
     print(f"\n--- Recording starts in {i} seconds ---")
-    time.sleep(1)
+    time.sleep(0.5)
+print("Recording now...")
 y_mic, sr_mic = record_audio(duration=7)
 print("Recording done.")
 
-S_db_mic = spectrogram(y_mic, sr_mic)
+S_db_mic = spectrogram(y_mic)
 peaks_mic = find_peaks(S_db_mic)
 fps_mic = generate_fingerprints(peaks_mic)
 print(f"Mic clip: {len(peaks_mic)} peaks, {len(fps_mic)} fingerprints")
@@ -79,13 +87,12 @@ plt.ylabel("Count of matching fingerprints")
 plt.legend()
 plt.show()
 
-# -------------------------------
-# Recognition summary
-# -------------------------------
-results = recognize(conn, fps_mic)
-if results:
-    top_song_id, top_score = results[0]
-    print("\nRecognition results:")
-    print(f"Top match: {top_song_id} (score: {top_score})")
+
+match_service = MatchService()
+match_service.conn = conn
+result = match_service.match_fingerprints(fps_mic)
+if result:
+    top_song, top_score = result
+    print(f"Recognition results, top match is: {top_song} (score: {top_score})")
 else:
     print("No match found.")

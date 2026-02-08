@@ -3,11 +3,12 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import time
 
-from audio_processing.audio import record_audio, load_audio
+from audio_processing.audio import load_audio
 from audio_processing.spectrogram import spectrogram, find_peaks
-from controllers.database import connect, init_db, add_song
+from controllers.database import connect, init_db
 from controllers.fingerprint import generate_fingerprints
-from controllers.match_service import recognize
+from controllers.match_service import match_fingerprints
+from controllers.song_manager import persist_song_data
 
 # -------------------------------
 # Setup DB (in memory)
@@ -29,10 +30,10 @@ if not clean_folder.exists():
 for wav_path in clean_folder.glob("*.wav"):
     print(f"Processing {wav_path.name}...")
     y, sr = load_audio(wav_path.as_posix())
-    S_db = spectrogram(y, sr)
+    S_db = spectrogram(y)
     peaks = find_peaks(S_db)
     fps = generate_fingerprints(peaks)
-    add_song(conn, wav_path.stem, fps)
+    persist_song_data(conn, wav_path.stem, fps)
     song_fps[wav_path.stem] = fps
     song_ids.append(wav_path.stem)
     print(f"Added {wav_path.stem}, {len(fps)} fingerprints")
@@ -67,7 +68,7 @@ for test_song_id, test_fps in song_fps.items():
     plt.show()
 
     # Recognition summary for this query
-    results = recognize(conn, test_fps)
+    results = match_fingerprints(conn, test_fps)
     if results:
         top_song_id, top_score = results[0]
         print("Recognition results:")

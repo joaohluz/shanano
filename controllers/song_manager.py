@@ -13,7 +13,7 @@ def add_song(conn : Connection, file_path: str):
     
     print(f"Processing {file.name}...")
     y, sr = load_audio(file.as_posix())
-    S_db = spectrogram(y, sr)
+    S_db = spectrogram(y)
     peaks = find_peaks(S_db)
     fps = generate_fingerprints(peaks)
     persist_song_data(conn, file.stem, fps)

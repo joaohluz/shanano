@@ -1,54 +1,60 @@
+import queue
+import threading
 from rich import print
 from collections import defaultdict
-from audio_processing.audio import record_audio
-from audio_processing.spectrogram import spectrogram, find_peaks
-from controllers.fingerprint import generate_fingerprints
+from controllers.database import connect, init_db
 
+class MatchService:
+    def __init__(self):
+        self.match_found = threading.Event()
+        self.match_result = None
+        self.fingerprint_queue = queue.Queue()
 
+    def submit_fingerprints(self, fps):
+        self.fingerprint_queue.put(fps)
 
-def match(conn):
-    print(f"\n[yellow] Starting recording...[/yellow]")
-    
-    y_mic, sr_mic = record_audio(duration=7)
-    print(f"\r[yellow] Recording done. Processing...[/yellow]")
-    
-    S_db_mic = spectrogram(y_mic, sr_mic)
-    print(f"\r[yellow] Spectrogram computed. Finding peaks...[/yellow]")
-    
-    peaks_mic = find_peaks(S_db_mic)
-    print(f"\r[yellow] Found {len(peaks_mic)} peaks. Generating fingerprints...[/yellow]")
+    def run(self):
+        self.conn = connect()
+        init_db(self.conn)
+        while not self.match_found.is_set():
+            try:
+                fps = self.fingerprint_queue.get(timeout=0.1)
+                print(f"Fingerprints batch size: {len(fps)}")
+                result = self.match_fingerprints(fps)
+                print(f"Returned result: {result}")
+                if result:
+                    self.match_result = result
+                    self.match_found.set()
+            except queue.Empty:
+                continue
 
-    fps_mic = generate_fingerprints(peaks_mic)
-    print(f"\r[yellow] Generated {len(fps_mic)} fingerprints. Matching against DB...[/yellow]")
+    def match_fingerprints(self, fingerprints):
+        cur = self.conn.cursor()
+        matches = defaultdict(list)
 
-    matches = match_fingerprints(conn, fps_mic)
-    return matches
-    
+        print(f"Recognizing audio from {len(fingerprints)} fingerprints...")
 
-def match_fingerprints(conn, fingerprints):
-    cur = conn.cursor()
-    matches = defaultdict(list)
+        cur.execute("SELECT COUNT(*) FROM songs")
+        total_songs = cur.fetchone()[0]
+        print(f"Total songs in DB: {total_songs}")
 
-    print(f"Recognizing audio from {len(fingerprints)} fingerprints...")
+        for h, offset in fingerprints:
+            cur.execute(
+                "SELECT name as song_name, offset FROM fingerprints LEFT JOIN songs ON (songs.id = fingerprints.song_id) WHERE hash=?",
+                (h,)
+            )
+            for song_name, db_offset in cur.fetchall():
+                # Convert db_offset to int
+                matches[song_name].append(int(db_offset) - offset)
 
-    cur.execute("SELECT COUNT(*) FROM songs")
-    total_songs = cur.fetchone()[0]
-    print(f"Total songs in DB: {total_songs}")
-
-    for h, offset in fingerprints:
-        cur.execute(
-            "SELECT name as song_name, offset FROM fingerprints LEFT JOIN songs ON (songs.id = fingerprints.song_id) WHERE hash=?",
-            (h,)
-        )
-        for song_name, db_offset in cur.fetchall():
-            # Convert db_offset to int
-            matches[song_name].append(int(db_offset) - offset)
-
-    scores = {}
-    for song_name, offsets in matches.items():
-        hist = defaultdict(int)
-        for o in offsets:
-            hist[o] += 1
-        scores[song_name] = max(hist.values())
-
-    return sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        scores = {}
+        for song_name, offsets in matches.items():
+            hist = defaultdict(int)
+            for o in offsets:
+                hist[o] += 1
+            scores[song_name] = max(hist.values())
+        chosen = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        print(f"Best match: {chosen[0][0]} with score {chosen[0][1]}")
+        if chosen and chosen[0][1] > 50:
+            return chosen[0]
+        return None

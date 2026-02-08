@@ -1,8 +1,7 @@
 import librosa
 import sounddevice as sd
 import numpy as np
-
-DEFAULT_SR = 22050
+from config import DEFAULT_SR
 
 def load_audio(path, sr=DEFAULT_SR):
     y, sr = librosa.load(path, sr=sr, mono=True)

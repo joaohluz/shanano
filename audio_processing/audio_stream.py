@@ -12,6 +12,8 @@ class AudioStream:
         self.buffer = np.zeros(self.buffer_samples, dtype=np.float32)
         self.q = queue.Queue()
         self.running = False
+        self.match_found = threading.Event()
+        self.match_result = None
 
     def _audio_callback(self, indata, frames, time_info, status):
         # print(indata.shape)
@@ -33,7 +35,6 @@ class AudioStream:
         while self.running:
             chunk = self.q.get()
             chunk_len = len(chunk)
-            #print("Updating buffer with new chunk of size:", chunk_len)
             self.buffer = np.roll(self.buffer, -chunk_len)
             self.buffer[-chunk_len:] = chunk
 
