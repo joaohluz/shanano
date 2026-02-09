@@ -19,6 +19,8 @@ class MatchService:
         while not self.match_found.is_set():
             try:
                 fps = self.fingerprint_queue.get(timeout=0.1)
+                if not fps:
+                    continue
                 print(f"Fingerprints batch size: {len(fps)}")
                 result = self.match_fingerprints(fps)
                 print(f"Returned result: {result}")
