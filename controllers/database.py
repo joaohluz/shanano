@@ -15,7 +15,10 @@ def init_db(conn):
         CREATE TABLE IF NOT EXISTS fingerprints (
             hash TEXT,
             song_id INTEGER,
-            offset INTEGER
+            anchor_time INTEGER,
+            anchor_freq INTEGER,
+            target_time INTEGER,
+            target_freq INTEGER
         )
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_hash ON fingerprints(hash)")

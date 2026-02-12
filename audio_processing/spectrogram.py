@@ -14,3 +14,6 @@ def find_peaks(S_db, amp_min=-50):
     peaks = (S_db == neighborhood) & (S_db > amp_min)
     freqs, times = np.where(peaks)
     return list(zip(times, freqs))
+
+def frame_to_seconds(frame, hop_length, sample_rate):
+    return frame * hop_length / sample_rate

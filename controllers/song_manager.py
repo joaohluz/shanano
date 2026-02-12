@@ -26,8 +26,8 @@ def persist_song_data(conn : Connection, name, fingerprints):
     song_id = cur.lastrowid
 
     cur.executemany(
-    "INSERT INTO fingerprints (hash, song_id, offset) VALUES (?, ?, ?)",
-    [(str(h), int(song_id), int(offset)) for h, offset in fingerprints]
+    "INSERT INTO fingerprints (hash, song_id, anchor_time, anchor_freq, target_time, target_freq) VALUES (?, ?, ?, ?, ?, ?)",
+    [(str(h), int(song_id), int(anchor_time), int(anchor_freq), int(target_time), int(target_freq)) for h, anchor_time, anchor_freq, target_time, target_freq in fingerprints]
     )
 
     conn.commit()

@@ -40,23 +40,30 @@ class MatchService:
         total_songs = cur.fetchone()[0]
         print(f"Total songs in DB: {total_songs}")
 
-        for h, offset in fingerprints:
+        for h, anchor_time, anchor_freq, target_time, target_freq in fingerprints:
             cur.execute(
-                "SELECT name as song_name, offset FROM fingerprints LEFT JOIN songs ON (songs.id = fingerprints.song_id) WHERE hash=?",
+                "SELECT name as song_name, anchor_time FROM fingerprints LEFT JOIN songs ON (songs.id = fingerprints.song_id) WHERE hash=?",
                 (h,)
             )
-            for song_name, db_offset in cur.fetchall():
-                # Convert db_offset to int
-                matches[song_name].append(int(db_offset) - offset)
+            for song_name, db_anchor_time in cur.fetchall():
+                matches[song_name].append(int(db_anchor_time) - anchor_time)
 
         scores = {}
+        offset_count_per_song = {}
         for song_name, offsets in matches.items():
             hist = defaultdict(int)
             for o in offsets:
                 hist[o] += 1
             scores[song_name] = max(hist.values())
+            offset_count_per_song[song_name] = hist
         chosen = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        print(f"Best match: {chosen[0][0]} with score {chosen[0][1]}")
-        if chosen and chosen[0][1] > 50:
-            return chosen[0]
-        return None
+        print(f"Best match was: {chosen[0][0]} with score {chosen[0][1]}")
+        return chosen[0] , offset_count_per_song[chosen[0][0]]
+    
+    def get_matching_fingerprints_in_song(self, song_name, fps):
+        cur = self.conn.cursor()
+        hashes = [h for h, _, _, _, _ in fps]
+        placeholders = ','.join(['?'] * len(hashes))
+        query = f"SELECT hash, anchor_time, anchor_freq, target_time, target_freq FROM fingerprints LEFT JOIN songs ON (songs.id = fingerprints.song_id) WHERE song_id=(SELECT id FROM songs WHERE name=?) AND hash IN ({placeholders})"
+        cur.execute(query, (song_name, *hashes))
+        return cur.fetchall()

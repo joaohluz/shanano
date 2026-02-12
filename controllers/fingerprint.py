@@ -13,7 +13,7 @@ def generate_fingerprints(peaks):
 
             if MIN_TIME_DELTA <= delta_t <= MAX_TIME_DELTA:
                 h = hash_peak_pair(f1, f2, delta_t)
-                fingerprints.append((h, t1))
+                fingerprints.append((h, t1, f1, t2, f2))
 
     return fingerprints
 
