@@ -2,8 +2,8 @@ from pathlib import Path
 import librosa
 import soundfile as sf
 
-INPUT_DIR = Path("raw_wavs")
-OUTPUT_DIR = Path("clean_wavs")
+INPUT_DIR = Path("data", "assets", "raw_wavs")
+OUTPUT_DIR = Path("data", "assets", "clean_wavs")
 
 TARGET_SR = 22050
 
