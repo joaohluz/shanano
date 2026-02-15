@@ -24,38 +24,36 @@ class AudioFingerprintPipeline:
         self.find_peaks = find_peaks
         self.generate_fingerprints = generate_fingerprints
 
-    def run(self, y: np.ndarray, save_checkpoints: bool = False):
-        steps: Dict[str, Any] = {}
+    def run(self, y: np.ndarray):
+        self.checkpoints: Dict[str, Any] = {}
         sr = self.sample_rate
         
         # Step 0: Store raw audio
-        steps['raw'] = y.copy()
+        self.checkpoints['raw'] = y.copy()
         
         # Step 1: Normalize
         y_norm = y / np.max(np.abs(y)) * 0.95
-        steps['normalized'] = y_norm
+        self.checkpoints['normalized'] = y_norm
 
         # Step 2: Filtering
         y_filt = y_norm
         y_filt = self.lowpass_filter(y_filt, self.lowpass_cutoff, sr)
-        steps['lowpass'] = y_filt
+        self.checkpoints['lowpass'] = y_filt
         
         # Step 3: Spectrogram
         S_db = self.spectrogram(y_filt)
-        steps['spectrogram'] = S_db
+        self.checkpoints['spectrogram'] = S_db
 
         # Step 4: Enhance spectrogram (apply noise floor)
         S_db_enhanced = np.maximum(S_db, self.noise_floor_db)
-        steps['enhanced'] = S_db_enhanced
+        self.checkpoints['enhanced'] = S_db_enhanced
 
         # Step 5: Find peaks
         peaks = self.find_peaks(S_db_enhanced, amp_min=self.amp_min)
-        steps['peaks'] = peaks
+        self.checkpoints['peaks'] = peaks
 
         # Step 6: Generate fingerprints
         fingerprints = self.generate_fingerprints(peaks)
-        steps['fingerprints'] = fingerprints
+        self.checkpoints['fingerprints'] = fingerprints
 
-        if save_checkpoints:
-            return steps
         return fingerprints

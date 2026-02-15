@@ -5,10 +5,11 @@ from collections import defaultdict
 from controllers.database import connect, init_db
 
 class MatchService:
-    def __init__(self):
+    def __init__(self, conn):
         self.match_found = threading.Event()
         self.match_result = None
         self.fingerprint_queue = queue.Queue()
+        self.conn = conn
 
     def submit_fingerprints(self, fps):
         self.fingerprint_queue.put(fps)
@@ -34,12 +35,6 @@ class MatchService:
         cur = self.conn.cursor()
         matches = defaultdict(list)
 
-        print(f"Recognizing audio from {len(fingerprints)} fingerprints...")
-
-        cur.execute("SELECT COUNT(*) FROM songs")
-        total_songs = cur.fetchone()[0]
-        print(f"Total songs in DB: {total_songs}")
-
         for h, anchor_time, anchor_freq, target_time, target_freq in fingerprints:
             cur.execute(
                 "SELECT name as song_name, anchor_time FROM fingerprints LEFT JOIN songs ON (songs.id = fingerprints.song_id) WHERE hash=?",
@@ -58,7 +53,7 @@ class MatchService:
             offset_count_per_song[song_name] = hist
         chosen = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         return chosen[0] , offset_count_per_song[chosen[0][0]]
-    
+
     def get_matching_fingerprints_in_song(self, song_name, fps):
         cur = self.conn.cursor()
         hashes = [h for h, _, _, _, _ in fps]

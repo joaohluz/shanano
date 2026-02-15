@@ -4,6 +4,7 @@ from sqlite3 import Connection
 
 from audio_processing.audio import load_audio
 from audio_processing.spectrogram import spectrogram, find_peaks
+from config import DEFAULT_AMP_MIN
 from controllers.fingerprint import generate_fingerprints
 
 def add_song(conn : Connection, file_path: str):
@@ -14,7 +15,7 @@ def add_song(conn : Connection, file_path: str):
     print(f"Processing {file.name}...")
     y, sr = load_audio(file.as_posix())
     S_db = spectrogram(y)
-    peaks = find_peaks(S_db)
+    peaks = find_peaks(S_db, amp_min=DEFAULT_AMP_MIN)
     fps = generate_fingerprints(peaks)
     persist_song_data(conn, file.stem, fps)
     msg = f"Added {file.stem}, {len(fps)} fingerprints"
