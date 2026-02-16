@@ -57,7 +57,6 @@ class MatchService:
             scores[song_name] = max(hist.values())
             offset_count_per_song[song_name] = hist
         chosen = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        print(f"Best match was: {chosen[0][0]} with score {chosen[0][1]}")
         return chosen[0] , offset_count_per_song[chosen[0][0]]
     
     def get_matching_fingerprints_in_song(self, song_name, fps):
