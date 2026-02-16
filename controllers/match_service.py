@@ -2,7 +2,7 @@ import queue
 import threading
 from rich import print
 from collections import defaultdict
-from controllers.database import connect, init_db
+from controllers.database import connect
 
 class MatchService:
     def __init__(self, conn):
@@ -16,17 +16,16 @@ class MatchService:
 
     def run(self):
         self.conn = connect()
-        init_db(self.conn)
         while not self.match_found.is_set():
             try:
                 fps = self.fingerprint_queue.get(timeout=0.1)
                 if not fps:
                     continue
                 print(f"Fingerprints batch size: {len(fps)}")
-                result = self.match_fingerprints(fps)
-                print(f"Returned result: {result}")
-                if result:
-                    self.match_result = result
+                match, offset_hist = self.match_fingerprints(fps)
+                print(f"Returned result: {match}")
+                if match:
+                    self.match_result = match
                     self.match_found.set()
             except queue.Empty:
                 continue
@@ -34,7 +33,6 @@ class MatchService:
     def match_fingerprints(self, fingerprints):
         cur = self.conn.cursor()
         matches = defaultdict(list)
-
         for h, anchor_time, anchor_freq, target_time, target_freq in fingerprints:
             cur.execute(
                 "SELECT name as song_name, anchor_time FROM fingerprints LEFT JOIN songs ON (songs.id = fingerprints.song_id) WHERE hash=?",
@@ -51,8 +49,11 @@ class MatchService:
                 hist[o] += 1
             scores[song_name] = max(hist.values())
             offset_count_per_song[song_name] = hist
-        chosen = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        return chosen[0] , offset_count_per_song[chosen[0][0]]
+        try:
+            chosen = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+            return chosen[0] , offset_count_per_song[chosen[0][0]]
+        except Exception as e:
+            return None, None
 
     def get_matching_fingerprints_in_song(self, song_name, fps):
         cur = self.conn.cursor()

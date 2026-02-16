@@ -35,5 +35,5 @@ def persist_song_data(conn : Connection, name, fingerprints):
 
 def list_songs(conn):
     cur = conn.cursor()
-    cur.execute("SELECT name FROM songs")
-    return [row[0] for row in cur.fetchall()]
+    cur.execute("SELECT id, name, count(fingerprints.hash) FROM songs LEFT JOIN fingerprints ON songs.id = fingerprints.song_id GROUP BY songs.id")
+    return [(row[0], row[1], row[2]) for row in cur.fetchall()]
