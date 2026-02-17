@@ -41,17 +41,20 @@ class MatchService:
             for song_name, db_anchor_time in cur.fetchall():
                 matches[song_name].append(int(db_anchor_time) - anchor_time)
 
-        scores = {}
+        song_candidates = []
         offset_count_per_song = {}
         for song_name, offsets in matches.items():
             hist = defaultdict(int)
             for o in offsets:
                 hist[o] += 1
-            scores[song_name] = max(hist.values())
+            score = max(hist.values())
+            total_matches = sum(hist.values())
+            song_candidates.append((song_name, score, total_matches))
             offset_count_per_song[song_name] = hist
         try:
-            chosen = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-            return chosen[0] , offset_count_per_song[chosen[0][0]]
+            chosen = sorted(song_candidates, key=lambda x: (x[1], x[2]), reverse=True)
+            best_song = chosen[0]
+            return (best_song[0], best_song[1]) , offset_count_per_song[best_song[0]]
         except Exception as e:
             return None, None
 

@@ -33,7 +33,6 @@ def list():
 
 @app.command()
 def add(path: str):
-    # load -> spectrogram -> peaks -> fingerprints -> DB
     rich.print(f"[green]Adding song from {path}[/green]")
     path = Path(path)
     if not path.exists():
