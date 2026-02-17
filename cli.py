@@ -18,11 +18,8 @@ init_db(conn)
 match_service = MatchService(conn)
 audio_pipeline = AudioFingerprintPipeline()
 
-
-
 @app.command()
 def list():
-    #print rich table of songs
     rich.print(f"[blue]Listing songs in DB:[/blue]")
     table = rich.table.Table("ID", "Name", "Fingerprints", title="Songs in Database")
     table.style = "magenta"
@@ -67,8 +64,5 @@ def match(seconds: int = 7):
         time.sleep(1)
     rich.print(f"[blue]{match_service.match_result[0]}[/blue]: {match_service.match_result[1]}")
 
-
 if __name__ == "__main__":
     app()
-
-

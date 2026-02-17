@@ -1,0 +1,8 @@
+librosa
+scipy
+numpy
+sounddevice
+soundfile
+typer
+rich
+matplotlib

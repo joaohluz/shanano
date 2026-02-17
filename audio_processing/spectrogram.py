@@ -11,7 +11,6 @@ def spectrogram(y, n_fft=4096, hop_length=512):
     return S_db
 
 def find_peaks(S_db, amp_min=DEFAULT_AMP_MIN):
-    # local maxima
     neighborhood = maximum_filter(S_db, size=(20, 20))
     peaks = (S_db == neighborhood) & (S_db > amp_min)
     freqs, times = np.where(peaks)
