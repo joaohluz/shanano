@@ -1,6 +1,6 @@
-# Shanano: Audio Fingerprinting Song Matcher
+# Shanano — Scalable Audio Fingerprinting
 
-Shanano is an exploratory project aimed at learning and implementing audio fingerprinting techniques for efficiently matching songs in a database. Inspired by Shazam's algorithm, this project demonstrates how to extract unique fingerprints from audio files and use them to identify songs from short recordings.
+Learning project: turning a minimal Shazam clone into a distributed, observable, production-ish system.
 
 ## How It Works
 
@@ -13,93 +13,82 @@ The system processes audio through several steps:
 5. **Database Storage**: Store fingerprints with song metadata
 6. **Matching**: Compare query fingerprints against database to find matches
 
-## Installation
+## Current Status (Iteration 1)
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/joaohluz/shanano.git
-   cd shanano
-   ```
+Core API infrastructure in progress. See the [iteration plan](AGENTS.md#iteration-plan) for what's next.
 
-2. Create a virtual environment:
-   ```bash
-   python -m venv shanano_venv
-   source shanano_venv/bin/activate  # On Windows: shanano_venv\Scripts\activate
-   ```
+### What's set up
 
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+- **SQLAlchemy 2.x async models** (`core/models.py`) — `Song` and `Fingerprint` tables
+- **Async database session** (`core/database.py`) — asyncpg engine with FastAPI-compatible `get_db` dependency
+- **FastAPI** + **Alembic** — ready for routes and migrations
+- **Docker Compose** — coming next (PostgreSQL + API containers)
 
-## Usage
+## Dev Workflow
 
-### Command Line Interface
+```bash
+# 1. Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
 
-The project provides a CLI with several commands:
+# 2. Install dependencies
+pip install -r requirements.txt
 
-- **List songs**: `python -m cli list`
-- **Add songs**: `python -m cli add <path>` (path to WAV file or directory)
-- **Match audio**: `python -m cli match --seconds [seconds]` (records and matches, default 7 seconds)
-- **Live view**: `python -m cli live` (shows real-time audio waveform)
+# 3. Start PostgreSQL + API (once Docker Compose is set up)
+docker compose up -d
 
-### Example Workflow
+# 4. Run migrations
+alembic upgrade head
 
-1. Add some songs to the database:
-   ```bash
-   python -m cli add data/assets/clean_wavs/
-   ```
+# 5. Run tests
+pytest
 
-2. List the songs:
-   ```bash
-   python -m cli list
-   ```
+# 6. View logs
+docker compose logs -f api
+```
 
-3. Play a song and match it:
-   ```bash
-   python -m cli match
-   ```
+## CLI (original, still works)
 
-## Notebooks
+The original CLI still works for local experiments with SQLite:
 
-The project includes several Jupyter notebooks that provide detailed explanations and visualizations:
-
-- **[audio_fingerprinting_pipeline.ipynb](audio_fingerprinting_pipeline.ipynb)**: Step-by-step explanation of the audio fingerprinting algorithm, including loading audio, computing spectrograms, detecting peaks, generating fingerprints, and matching against the database.
-
-- **[Input_Audio_Pipeline.ipynb](Input_Audio_Pipeline.ipynb)**: Detailed walkthrough of the microphone audio processing pipeline, showing how recorded audio is processed through normalization, filtering, peak detection, and fingerprint generation.
-
-- **[Input_Processing_Experiments.ipynb](Input_Processing_Experiments.ipynb)**: Experimental explorations of different audio processing techniques, parameter tuning, and performance analysis.
-
-- **[perfect_match_histograms.ipynb](perfect_match_histograms.ipynb)**: Analysis of ideal matching scenarios with perfect audio alignment, demonstrating the effectiveness of the fingerprinting system.
-
-These notebooks serve as educational resources and provide visual insights into each step of the audio fingerprinting process.
+```bash
+source .venv/bin/activate
+python -m cli list
+python -m cli add data/assets/clean_wavs/
+python -m cli match
+```
 
 ## Project Structure
 
-- `audio_processing/`: Audio loading, spectrogram, and stream processing
-- `controllers/`: Database operations, fingerprinting, and matching logic
-- `tests/`: Unit tests
-- `audio_pipeline.py`: Main fingerprinting pipeline
-- `cli.py`: Command-line interface
-- `*.ipynb`: Jupyter notebooks with detailed explanations and experiments
+```
+shanano/
+├── api/                    # FastAPI routes and app factory
+├── core/                   # Business logic (models, services, pipeline)
+├── infra/                  # Docker, K8s, Helm
+├── observability/          # Grafana, Prometheus, OTel
+├── airflow/                # DAG definitions
+├── kafka/                  # Event schemas
+├── tests/                  # Unit and integration tests
+├── audio_processing/       # DSP modules (spectrogram, peaks, filtering)
+├── controllers/            # Original CLI controllers (SQLite)
+├── data/                   # Sample audio files
+├── AGENTS.md               # Project context for AI assistants
+├── config.py               # App-wide constants
+└── requirements.txt
+```
 
-## Learning Objectives
+## Notebooks
 
-This project explores:
-- Digital signal processing concepts
-- Audio feature extraction
-- Database indexing for fast lookups
-- Real-time audio processing
+Jupyter notebooks with detailed algorithm walkthroughs (from the original project):
 
-## Dependencies
-
-The project uses minimal dependencies focused on audio processing and terminal interfaces. See `requirements.txt` for the complete list.
+- [`audio_fingerprinting_pipeline.ipynb`](audio_fingerprinting_pipeline.ipynb)
+- [`Input_Audio_Pipeline.ipynb`](Input_Audio_Pipeline.ipynb)
+- [`Input_Processing_Experiments.ipynb`](Input_Processing_Experiments.ipynb)
+- [`perfect_match_histograms.ipynb`](perfect_match_histograms.ipynb)
 
 ## License
 
-This is an educational project. Feel free to explore and learn from the code!
-
-The audio files I used in my experiments were obtained from the MUSAN audio collection. [MUSAN](https://openslr.org/17/) is a corpus of music, speech, and noise recordings supported by the National Science Foundation Graduate Research Fellowship under Grant No. 1232825 and by Spoken Communications.
+Educational project. Audio files from the [MUSAN](https://openslr.org/17/) corpus.
 
 ```LaTeX
 @misc{musan2015,

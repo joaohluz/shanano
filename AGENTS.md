@@ -27,6 +27,10 @@ Learning project: turning a minimal Shazam clone into a distributed, observable,
 - `kafka/` — producer/consumer schemas
 - `tests/` — test suite
 
+## Communication
+
+- **Ask before running commands** — unless the user explicitly says "run free" or "you have permission to run commands freely", always ask for approval before executing anything that creates, modifies, or deletes files, installs dependencies, or starts/stops containers. This is a learning project and the user wants to understand each step.
+
 ## Conventions
 
 - Type hints everywhere
@@ -38,6 +42,7 @@ Learning project: turning a minimal Shazam clone into a distributed, observable,
 - Metrics exported on `/metrics`
 - Alembic migrations in `migrations/`
 - Tests mirror the `core/` structure
+- README.md updated as each iteration adds new capabilities
 
 ## Dev Workflow
 
