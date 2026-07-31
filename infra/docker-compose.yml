@@ -56,6 +56,21 @@ services:
     depends_on:
       - db
 
+  loadgen:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    entrypoint: ["python", "loadgen.py"]
+    environment:
+      LOADGEN_TARGET: http://api:8000
+      LOADGEN_WORKERS: "8"
+      LOADGEN_MIN_RPS: "1"
+      LOADGEN_MAX_RPS: "20"
+      LOADGEN_WAVE_PERIOD: "120"
+    depends_on:
+      api:
+        condition: service_started
+
   prometheus:
     image: prom/prometheus:v2.53.0
     volumes:

@@ -13,7 +13,7 @@ The system processes audio through several steps:
 5. **Database Storage**: Store fingerprints with song metadata
 6. **Matching**: Compare query fingerprints against database to find matches (not yet wired)
 
-## Current Status (Iteration 1 & 2 — complete)
+## Current Status (Iterations 1–3 — complete)
 
 ### What's built
 
@@ -28,7 +28,9 @@ The system processes audio through several steps:
 | **Structured Logging** (`core/logging.py`) | JSON-format logging via `structlog` with ISO timestamps, service name context |
 | **Prometheus** | Scrapes `/metrics` from API (`:8000`) and Worker (`:8001`) every 10s |
 | **Grafana** | Pre-provisioned datasource + dashboard (6 panels) — auto-deployed |
-| **Docker Compose** (`infra/docker-compose.yml`) | 6 containers: API, Worker, PostgreSQL, pgAdmin, Prometheus, Grafana |
+| **Docker Compose** (`infra/docker-compose.yml`) | 7 containers: API, Worker, PostgreSQL, pgAdmin, Prometheus, Grafana, loadgen |
+| **Load Generator** (`loadgen.py`) | Fakes user traffic against the API so metrics visibly go up and down; request rate follows a sine wave between `LOADGEN_MIN_RPS` and `LOADGEN_MAX_RPS`, uploads synthetic chirp WAVs so the worker has real work |
+| **Kubernetes** (`k8s/`) | Plain manifests: API ×2, Worker, PostgreSQL (StatefulSet), loadgen, Prometheus, Grafana, all on kind (see `k8s/README.md`) |
 
 ### API Endpoints
 
@@ -118,6 +120,36 @@ pytest --cov=. --cov-report=term-missing
 
 CI runs automatically via GitHub Actions on push/PR.
 
+### Generating Fake Traffic
+
+To see the dashboards move, run the load generator against the API. The request rate breathes between `LOADGEN_MIN_RPS` and `LOADGEN_MAX_RPS` over a `LOADGEN_WAVE_PERIOD`-second sine wave, and it uploads synthetic chirp WAVs so the worker actually fingerprints songs.
+
+```bash
+# Point at the Docker-Compose API
+docker compose -f infra/docker-compose.yml up -d loadgen
+
+# Or run it directly against a local dev server
+python loadgen.py --target http://localhost:8000 --duration 300
+
+# Bigger waves, faster cycle
+python loadgen.py --min-rps 2 --max-rps 40 --wave-period 60
+```
+
+Env vars (also used by the `loadgen` k8s Deployment): `LOADGEN_TARGET`, `LOADGEN_WORKERS`, `LOADGEN_MIN_RPS`, `LOADGEN_MAX_RPS`, `LOADGEN_WAVE_PERIOD`, `LOADGEN_DURATION`, `LOADGEN_SEED`.
+
+### Kubernetes (Stage 3)
+
+Deploys the whole stack on a local kind cluster. See `k8s/README.md` for the full walkthrough. Summary:
+
+```bash
+docker build -f infra/Dockerfile -t shanano-api:latest .
+kind create cluster --name shanano --config k8s/kind-config.yaml
+kind load docker-image shanano-api:latest --name shanano
+kubectl apply -f k8s/
+```
+
+Then open the dashboard at `http://localhost:30030` (admin / shanano) and watch the loadgen waves roll through.
+
 ### Services
 
 | Service | URL | Credentials |
@@ -150,7 +182,18 @@ shanano/
 │   └── song_service.py     # Async song processing (load audio, pipeline, persist)
 ├── infra/                  # Containerization
 │   ├── Dockerfile          # Multi-stage build (python:3.12-slim + librosa deps)
-│   └── docker-compose.yml  # 6 services: API, Worker, PostgreSQL, pgAdmin, Prometheus, Grafana
+│   └── docker-compose.yml  # 7 services: API, Worker, PostgreSQL, pgAdmin, Prometheus, Grafana, loadgen
+├── k8s/                    # Kubernetes manifests (Stage 3)
+│   ├── 00-namespace.yaml   # shanano namespace
+│   ├── 01-configmap.yaml   # Shared env (DATABASE_URL, UPLOAD_DIR)
+│   ├── 02-storage.yaml     # Uploads PVC
+│   ├── 03-postgres.yaml    # PostgreSQL StatefulSet + headless service
+│   ├── 04-api.yaml         # API Deployment ×2 + NodePort service
+│   ├── 05-worker.yaml      # Worker Deployment + metrics service
+│   ├── 06-loadgen.yaml     # Fake traffic generator Deployment
+│   ├── 07-prometheus.yaml  # Prometheus ConfigMap + Deployment + NodePort
+│   ├── 08-grafana.yaml     # Grafana provisioning ConfigMaps + Deployment + NodePort
+│   └── README.md           # kind deploy walkthrough
 ├── migrations/             # Alembic
 │   ├── env.py              # Async-compatible Alembic env
 │   └── versions/           # Migration scripts (2 so far)
@@ -161,6 +204,7 @@ shanano/
 │       ├── datasources/    # Auto-provisioned Prometheus datasource
 │       └── dashboards/     # Pre-built dashboard with 6 panels
 ├── worker.py               # Background worker: polls for pending songs, fingerprints them
+├── loadgen.py              # Fake user traffic generator (sine-wave RPS, synthetic uploads)
 ├── audio_processing/       # Original DSP modules (spectrogram, peaks, filters)
 │   ├── audio.py            # load_audio, record_audio (lazy sounddevice import)
 │   └── spectrogram.py      # STFT, peak detection via maximum_filter

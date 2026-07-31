@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  namespace: shanano
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loadgen
+  template:
+    metadata:
+      labels:
+        app: loadgen
+    spec:
+      containers:
+        - name: loadgen
+          image: shanano-api:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "loadgen.py"]
+          env:
+            - name: LOADGEN_TARGET
+              value: http://api:8000
+            - name: LOADGEN_WORKERS
+              value: "8"
+            - name: LOADGEN_MIN_RPS
+              value: "1"
+            - name: LOADGEN_MAX_RPS
+              value: "20"
+            - name: LOADGEN_WAVE_PERIOD
+              value: "120"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

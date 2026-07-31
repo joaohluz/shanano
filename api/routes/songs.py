@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_db
 from config import UPLOAD_DIR
+from core.metrics import songs_uploaded
 from core.models import Fingerprint, Song
 from core.schemas import SongOut, SongListOut
 
@@ -60,6 +61,7 @@ async def add_song(file: UploadFile = File(...), db: AsyncSession = Depends(get_
     song = Song(name=file.filename, file_path=str(file_path))
     db.add(song)
     await db.flush()
+    songs_uploaded.inc()
 
     return SongOut(id=song.id, name=song.name, status=song.status)
 

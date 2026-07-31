@@ -30,6 +30,8 @@ Learning project: turning a minimal Shazam clone into a distributed, observable,
 - `core/logging.py` — structured JSON logging via structlog
 - `core/song_service.py` — async song fingerprinting (load audio, run pipeline, persist)
 - `worker.py` — background worker: polls DB for pending songs every 5s, exposes /metrics on :8001
+- `loadgen.py` — fake user traffic generator: sine-wave request rate between min/max RPS, uploads synthetic chirp WAVs; configurable via LOADGEN_* env vars
+- `k8s/` — Kubernetes manifests for kind (namespace, configmap, postgres StatefulSet, api/worker/loadgen Deployments, prometheus, grafana) + `k8s/README.md` deploy walkthrough
 - `audio_pipeline.py` — AudioFingerprintPipeline class
 - `audio_processing/` — DSP modules (spectrogram, peaks, filters)
 - `controllers/` — original SQLite-based CLI controllers
@@ -125,11 +127,18 @@ curl http://localhost:8000/songs/
 - `/metrics` endpoint on API (:8000) and worker HTTP server (:8001)
 - Structured JSON logging via structlog (ISO timestamps, service context)
 - Prometheus + Grafana containers with auto-provisioned datasource and 6-panel dashboard
-- Docker Compose now runs 6 services
+- Docker Compose now runs 7 services (added loadgen)
+
+### ✅ Iteration 3: Kubernetes + Fake Traffic — COMPLETE
+
+- `loadgen.py` — fake user traffic generator that makes metrics visibly go up and down (sine-wave RPS between `LOADGEN_MIN_RPS`/`LOADGEN_MAX_RPS`, weighted endpoint mix incl. uploads of synthetic chirp WAVs so the worker has real work)
+- `k8s/` — plain manifests for kind: namespace, configmap, uploads PVC, postgres StatefulSet, api Deployment ×2 + NodePort (:30000), worker + metrics NodePort (:30001), loadgen Deployment, prometheus NodePort (:30900), grafana NodePort (:30030)
+- `k8s/README.md` — deploy walkthrough (build image, kind create, kind load docker-image, kubectl apply)
+- loadgen wired into docker-compose too (`docker compose up -d loadgen`)
+- Tests: `tests/unit/test_loadgen.py`
 
 ### 🔜 Upcoming Iterations
 
-3. **Kubernetes** — manifests/Helm charts, deploy on kind
 4. **Job Scheduling (Airflow)** — batch re-indexing, data retention DAGs
 5. **Event-Driven (Kafka)** — async fingerprint processing pipeline
 6. **Advanced Scalability** — HPA, Redis caching, read replicas, S3 audio storage, load testing
@@ -157,7 +166,18 @@ shanano/
 ├── infra/
 │   ├── __init__.py
 │   ├── Dockerfile           # Multi-stage python:3.12-slim
-│   └── docker-compose.yml   # API + Worker + PostgreSQL + pgAdmin + Prometheus + Grafana
+│   └── docker-compose.yml   # API + Worker + PostgreSQL + pgAdmin + Prometheus + Grafana + loadgen
+├── k8s/                     # Kubernetes manifests (Iteration 3)
+│   ├── 00-namespace.yaml
+│   ├── 01-configmap.yaml
+│   ├── 02-storage.yaml      # Uploads PVC
+│   ├── 03-postgres.yaml     # StatefulSet + headless service
+│   ├── 04-api.yaml          # Deployment ×2 + NodePort :30000
+│   ├── 05-worker.yaml       # Deployment + metrics NodePort :30001
+│   ├── 06-loadgen.yaml      # Fake traffic generator Deployment
+│   ├── 07-prometheus.yaml   # ConfigMap + Deployment + NodePort :30900
+│   ├── 08-grafana.yaml      # Provisioning ConfigMaps + Deployment + NodePort :30030
+│   └── README.md            # kind deploy walkthrough
 ├── migrations/
 │   ├── env.py               # Async Alembic env
 │   ├── script.py.mako
@@ -179,7 +199,8 @@ shanano/
 │   │   ├── __init__.py
 │   │   ├── test_config.py
 │   │   ├── test_schemas.py
-│   │   └── test_audio_pipeline.py
+│   │   ├── test_audio_pipeline.py
+│   │   └── test_loadgen.py
 │   └── integration/
 │       ├── __init__.py
 │       ├── test_songs_api.py
@@ -190,6 +211,7 @@ shanano/
 ├── controllers/             # SQLite controllers (existing)
 ├── data/                    # Sample audio
 ├── worker.py                # Background fingerprinting worker + /metrics on :8001
+├── loadgen.py               # Fake user traffic generator (sine-wave RPS, synthetic uploads)
 ├── audio_pipeline.py        # AudioFingerprintPipeline class
 ├── cli.py                   # Original Typer CLI
 ├── config.py                # App-wide constants

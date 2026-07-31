@@ -16,3 +16,4 @@ rich
 matplotlib
 prometheus-client>=0.21.0
 structlog>=24.4.0
+httpx>=0.27.0
