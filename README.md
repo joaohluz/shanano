@@ -15,6 +15,17 @@ The system processes audio through several steps:
 
 ## Current Status (Iterations 1–3 — complete)
 
+### 🔜 Iteration 4 (planned): Catalog Ingestion, Auth, Webapp & Matching
+
+Goals: populate the catalog automatically from a safe open-source source, secure the API for a future hosted deployment, and give users a web UI to upload songs and match audio with full metadata. Full spec lives in `AGENTS.md` under *Iteration 4*. Key decisions:
+
+- **Catalog source**: Internet Archive (keyless, public domain / CC), default collection `etree` (Live Music Archive) — fetches artist, album, year, genre, and cover art per item.
+- **Scheduler**: Kubernetes CronJob runs `catalog_fetch.py` on a schedule. Airflow is not deployed this iteration, but the fetch script is written to be reusable as an Airflow task later.
+- **Auth**: JWT (HS256) + roles (`admin`/`user`); registration is admin-only; `admin` + `loadgen` users seeded via env.
+- **Non-WAV audio**: add `ffmpeg` to the Docker image and relax `.wav`-only upload/match checks to `.wav .mp3 .flac .ogg .m4a`.
+- **Endpoints**: upload/match require auth, delete is admin-only; song listing, `/health`, `/metrics` stay public.
+- **Webapp**: static HTML/JS SPA served by FastAPI — login, upload, and match (result card with cover art + full metadata).
+
 ### What's built
 
 | Component | What it does |

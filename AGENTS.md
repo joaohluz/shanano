@@ -23,6 +23,12 @@ Learning project: turning a minimal Shazam clone into a distributed, observable,
 - `api/deps.py` — DB session dependency injection
 - `api/routes/songs.py` — song CRUD + WAV upload endpoint
 - `api/routes/match.py` — match endpoint (stub, returns 501)
+- `api/routes/auth.py` — planned: register (admin-only), login, /me (Iteration 4)
+- `core/catalog_service.py` — planned: Internet Archive catalog fetch + metadata extraction (Iteration 4)
+- `core/match_service.py` — planned: async fingerprint matching ported from `controllers/match_service.py` (Iteration 4)
+- `core/security.py` — planned: bcrypt hashing + JWT create/verify (Iteration 4)
+- `catalog_fetch.py` — planned: CLI entrypoint for one IA fetch batch (Iteration 4)
+- `webapp/` — planned: static HTML/JS SPA (login/upload/match) served by FastAPI (Iteration 4)
 - `core/models.py` — SQLAlchemy models (Song with status tracking, Fingerprint)
 - `core/schemas.py` — Pydantic schemas for request/response
 - `core/database.py` — async engine + session factory (reads DATABASE_URL env var)
@@ -34,8 +40,8 @@ Learning project: turning a minimal Shazam clone into a distributed, observable,
 - `k8s/` — Kubernetes manifests for kind (namespace, configmap, postgres StatefulSet, api/worker/loadgen Deployments, prometheus, grafana) + `k8s/README.md` deploy walkthrough
 - `audio_pipeline.py` — AudioFingerprintPipeline class
 - `audio_processing/` — DSP modules (spectrogram, peaks, filters)
-- `controllers/` — original SQLite-based CLI controllers
-- `infra/Dockerfile` — multi-stage Docker build (python:3.12-slim)
+- `controllers/` — original SQLite-based CLI controllers (incl. `match_service.py` — source of the matching algorithm to port)
+- `infra/Dockerfile` — multi-stage Docker build (python:3.12-slim) — will add `ffmpeg` for MP3 decode (Iteration 4)
 - `infra/docker-compose.yml` — 6 services: api, worker, db (PostgreSQL), pgadmin, prometheus, grafana
 - `migrations/` — Alembic migrations (versions: initial schema, status+file_path columns)
 - `observability/prometheus/prometheus.yml` — scrape config for api (:8000) and worker (:8001)
@@ -137,9 +143,38 @@ curl http://localhost:8000/songs/
 - loadgen wired into docker-compose too (`docker compose up -d loadgen`)
 - Tests: `tests/unit/test_loadgen.py`
 
-### 🔜 Upcoming Iterations
+### 🔜 Iteration 4: Catalog Ingestion, Auth, Webapp & Matching — SPEC (not yet implemented)
 
-4. **Job Scheduling (Airflow)** — batch re-indexing, data retention DAGs
+Goals: populate the catalog automatically from a safe open-source source, secure the API for a future hosted deployment, and give users a web UI to upload songs and match audio with full metadata.
+
+#### Design decisions
+
+- **Audio source**: Internet Archive (keyless, public domain / CC). Default collection `etree` (Live Music Archive — rich metadata: artist, album, year, genre, cover art). Collection is configurable via `CATALOG_COLLECTION` env.
+- **Scheduler**: Kubernetes CronJob (native pod scheduling). Airflow is *not* deployed this iteration; `catalog_fetch.py` is deliberately written to be reusable as an Airflow task later (the CronJob is the plain-k8s version of the same DAG step).
+- **Auth**: JWT (HS256) + roles (`admin`/`user`). **Registration is admin-only** — no public register endpoint. Seed `admin` and `loadgen` users via env at startup, plus `scripts/create_user.py` for ad-hoc users.
+- **Non-WAV audio**: `load_audio` uses `librosa.load`, which decodes WAV/FLAC/OGG via soundfile and MP3 via audioread. No functional blocker. Two changes needed:
+  1. Add `ffmpeg` to `infra/Dockerfile` so MP3s decode reliably in the container.
+  2. Relax `.wav`-only checks in `POST /songs/` and `POST /match/` to accept `.wav .mp3 .flac .ogg .m4a`.
+- **Endpoint protection**: `POST /songs/` any authed user, `DELETE /songs/{id}` admin-only, `POST /match/` any authed user. `GET /songs*`, `/health`, `/metrics` stay public (loadgen + Prometheus need them). loadgen updated to log in once and send `Authorization: Bearer`.
+
+#### Phases
+
+1. **Metadata model** — migration adding to `songs`: `artist`, `album`, `year`, `genre`, `cover_art_url`, `source`, `source_url`. Update `core/schemas.py` (SongOut/SongListOut/MatchResultOut gain metadata) + new `User`-related schemas.
+2. **IA catalog job** — `core/catalog_service.py`: query `https://archive.org/advancedsearch.php` (configurable collection), fetch `https://archive.org/metadata/{identifier}` (extract creator/title/date/subject, cover art via `https://archive.org/services/img/{identifier}`), download audio from `https://archive.org/download/{identifier}/{file}` to `UPLOAD_DIR`, insert `Song(status=pending, ..., source="internet_archive")`, dedupe by `source_url`. `catalog_fetch.py` = CLI for one batch (`CATALOG_MAX_ITEMS`, default 5). Unit tests with mocked httpx.
+3. **Auth** — deps `PyJWT` + `bcrypt`; `core/security.py` (hash/verify + token create/decode); `User` model + migration (`id`, `username` unique, `hashed_password`, `role`, `created_at`); `api/routes/auth.py`: `POST /auth/register` (admin-only), `POST /auth/login` (OAuth2PasswordRequestForm → JWT), `GET /auth/me`; `api/deps.py`: `get_current_user`, `require_admin` (OAuth2PasswordBearer).
+4. **Real matching** — port `controllers/match_service.py` (SQLite) to async SQLAlchemy in `core/match_service.py`: hash lookup → offset voting → best candidate → full Song. `POST /match/` runs `load_audio → pipeline.run → match`, returns `MatchResultOut` with all metadata.
+5. **Webapp** — `webapp/` static HTML/JS (no build step): login (JWT in localStorage), upload (file + optional metadata), match (shows result card with cover art + full metadata). Mounted via FastAPI `StaticFiles`.
+6. **K8s** — `k8s/10-catalog-cronjob.yaml` (mounts `uploads-pvc`, env from configmap + secret), `k8s/secret.yaml` (JWT secret, admin creds), configmap keys (`CATALOG_COLLECTION`, `CATALOG_MAX_ITEMS`, `JWT_*`). Update docker-compose (ffmpeg, auth env, catalog service), `k8s/README.md`, `README.md`, AGENTS.md.
+7. **Tests** — update `test_songs_api.py`/`test_worker.py` for auth (admin + user token fixtures); new `test_catalog_service.py`, `test_auth.py`, `test_match_api.py`.
+
+#### Open questions to refine before implementation
+
+- CronJob schedule (proposed: every 30 min) and batch sizing vs the 1Gi `uploads-pvc` + serial worker.
+- Whether `POST /match/` should stay behind auth for the webapp demo.
+- Which IA file formats to prefer (FLAC/OGG first, MP3 fallback) given the serial worker.
+
+### 🔜 Upcoming Iterations (beyond 4)
+
 5. **Event-Driven (Kafka)** — async fingerprint processing pipeline
 6. **Advanced Scalability** — HPA, Redis caching, read replicas, S3 audio storage, load testing
 
@@ -154,7 +189,8 @@ shanano/
 │   └── routes/
 │       ├── __init__.py
 │       ├── songs.py         # Song CRUD + WAV upload
-│       └── match.py         # Match endpoint (stub)
+│       ├── match.py         # Match endpoint (stub)
+│       └── auth.py          # Iteration 4: register (admin-only), login, /me
 ├── core/
 │   ├── __init__.py
 │   ├── database.py          # Async engine + session factory
@@ -162,10 +198,13 @@ shanano/
 │   ├── metrics.py           # Prometheus custom metrics
 │   ├── models.py            # SQLAlchemy models + ProcessingStatus enum
 │   ├── schemas.py           # Pydantic schemas
-│   └── song_service.py      # Async song fingerprinting
+│   ├── song_service.py      # Async song fingerprinting
+│   ├── catalog_service.py   # Iteration 4: IA catalog fetch + metadata
+│   ├── match_service.py     # Iteration 4: async fingerprint matching
+│   └── security.py          # Iteration 4: bcrypt + JWT
 ├── infra/
 │   ├── __init__.py
-│   ├── Dockerfile           # Multi-stage python:3.12-slim
+│   ├── Dockerfile           # Multi-stage python:3.12-slim (adds ffmpeg in Iteration 4)
 │   └── docker-compose.yml   # API + Worker + PostgreSQL + pgAdmin + Prometheus + Grafana + loadgen
 ├── k8s/                     # Kubernetes manifests (Iteration 3)
 │   ├── 00-namespace.yaml
@@ -177,6 +216,9 @@ shanano/
 │   ├── 06-loadgen.yaml      # Fake traffic generator Deployment
 │   ├── 07-prometheus.yaml   # ConfigMap + Deployment + NodePort :30900
 │   ├── 08-grafana.yaml      # Provisioning ConfigMaps + Deployment + NodePort :30030
+│   ├── 09-pgadmin.yaml      # pgAdmin Deployment + NodePort :30050
+│   ├── 10-catalog-cronjob.yaml  # Iteration 4: IA fetch CronJob
+│   ├── secret.yaml          # Iteration 4: JWT secret + admin creds
 │   └── README.md            # kind deploy walkthrough
 ├── migrations/
 │   ├── env.py               # Async Alembic env
@@ -190,8 +232,9 @@ shanano/
 │   └── grafana/
 │       ├── datasources/     # Auto-provisioned Prometheus datasource
 │       └── dashboards/      # Pre-built 6-panel dashboard
-├── airflow/                 # Placeholder for Iteration 4
-├── kafka/                   # Placeholder for Iteration 5
+├── airflow/                 # Placeholder for Iteration 5
+├── kafka/                   # Placeholder for Iteration 6
+├── webapp/                  # Iteration 4: static HTML/JS SPA (login/upload/match)
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py           # Async SQLite engine + fixtures

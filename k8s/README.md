@@ -105,3 +105,10 @@ Scaling a deployment to 0 leaves its `StatefulSet`, PVCs, and stored data intact
 - The worker processes uploads serially (one poll loop). If loadgen uploads faster than the worker can fingerprint, `pending` songs accumulate — which is itself a nice thing to watch on the "Songs by Status" panel.
 - Prometheus uses `kubernetes_sd_configs` (role: endpoints) to scrape each replica individually. This is why `sum(shanano_..._total)` across the API's 2 replicas is monotonic — scraping a Service instead would round-robin to a random pod each time, making counters bounce up and down. Each pod reset (restart) still drops that pod's counter to 0; use `rate()` for rate panels, which handles resets.
 - All Prometheus/Grafana config lives in ConfigMaps, mirroring `observability/` from the Docker-Compose stack.
+
+## Planned (Iteration 4)
+
+- `k8s/10-catalog-cronjob.yaml` — recurring Internet Archive fetch job (mounts `uploads-pvc`, env from configmap + secret) that populates the catalog with metadata-bearing songs for the worker to fingerprint.
+- `k8s/secret.yaml` — JWT secret + admin credentials, referenced via `envFrom.secretRef` by api/worker/loadgen/cronjob.
+- New configmap keys: `CATALOG_COLLECTION`, `CATALOG_MAX_ITEMS`, `JWT_*`.
+- See the full spec in `AGENTS.md` (Iteration 4).
