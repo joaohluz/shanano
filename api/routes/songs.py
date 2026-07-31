@@ -1,9 +1,13 @@
+import aiofiles
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_db
-from core.models import Song, Fingerprint
+from config import UPLOAD_DIR
+from core.models import Fingerprint, Song
 from core.schemas import SongOut, SongListOut
 
 router = APIRouter()
@@ -15,6 +19,7 @@ async def list_songs(db: AsyncSession = Depends(get_db)):
         select(
             Song.id,
             Song.name,
+            Song.status,
             func.count(Fingerprint.hash).label("fingerprint_count"),
         )
         .outerjoin(Fingerprint, Song.id == Fingerprint.song_id)
@@ -22,7 +27,10 @@ async def list_songs(db: AsyncSession = Depends(get_db)):
     )
     rows = result.all()
     return [
-        SongListOut(id=row.id, name=row.name, fingerprint_count=row.fingerprint_count)
+        SongListOut(
+            id=row.id, name=row.name, status=row.status,
+            fingerprint_count=row.fingerprint_count,
+        )
         for row in rows
     ]
 
@@ -41,11 +49,19 @@ async def add_song(file: UploadFile = File(...), db: AsyncSession = Depends(get_
     if not file.filename or not file.filename.endswith(".wav"):
         raise HTTPException(status_code=400, detail="Only WAV files are supported")
 
-    song = Song(name=file.filename)
+    upload_dir = Path(UPLOAD_DIR)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    file_path = upload_dir / file.filename
+
+    async with aiofiles.open(file_path, "wb") as f:
+        content = await file.read()
+        await f.write(content)
+
+    song = Song(name=file.filename, file_path=str(file_path))
     db.add(song)
     await db.flush()
 
-    return SongOut(id=song.id, name=song.name)
+    return SongOut(id=song.id, name=song.name, status=song.status)
 
 
 @router.delete("/{song_id}", status_code=204)

@@ -1,9 +1,12 @@
 from pydantic import BaseModel
 
+from core.models import ProcessingStatus
+
 
 class SongOut(BaseModel):
     id: int
     name: str
+    status: ProcessingStatus
 
     model_config = {"from_attributes": True}
 
@@ -11,6 +14,7 @@ class SongOut(BaseModel):
 class SongListOut(BaseModel):
     id: int
     name: str
+    status: ProcessingStatus
     fingerprint_count: int
 
 

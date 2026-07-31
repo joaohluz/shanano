@@ -21,8 +21,25 @@ services:
       dockerfile: infra/Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://shanano:shanano@db:5432/shanano
+      UPLOAD_DIR: /app/data/uploads
     ports:
       - "8000:8000"
+    volumes:
+      - uploads:/app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    entrypoint: ["python", "worker.py"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://shanano:shanano@db:5432/shanano
+      UPLOAD_DIR: /app/data/uploads
+    volumes:
+      - uploads:/app/data/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -39,3 +56,4 @@ services:
 
 volumes:
   pgdata:
+  uploads:
