@@ -35,7 +35,13 @@ Learning project: turning a minimal Shazam clone into a distributed, observable,
 - `infra/docker-compose.yml` — 4 services: api, worker, db (PostgreSQL), pgadmin
 - `migrations/` — Alembic migrations (versions: initial schema, status+file_path columns)
 - `cli.py` — original Typer CLI (SQLite, still works independently)
-- `tests/` — test suite (mostly original test scripts)
+- `tests/` — pytest test suite (unit + integration) + legacy scripts
+- `tests/conftest.py` — async SQLite engine + TestClient fixtures
+- `tests/unit/` — unit tests (config, schemas, audio pipeline)
+- `tests/integration/` — integration tests (API routes, song service, worker)
+- `requirements-dev.txt` — test dependencies (pytest, httpx, aiosqlite, pytest-cov)
+- `pytest.ini` — pytest configuration (asyncio_mode=auto)
+- `.github/workflows/test.yml` — CI on push/PR to scalable-shazam
 - `data/` — sample audio files
 
 ## Communication
@@ -91,7 +97,7 @@ curl http://localhost:8000/songs/
 - **FastAPI TestClient**: via `httpx.AsyncClient` with `get_db` dependency override
 - **Test isolation**: each test gets a fresh DB engine + session (function-scoped fixtures)
 - **Markers**: `unit` (no external deps) and `integration` (DB, API)
-- **CI**: GitHub Actions on push/PR to `main` (`.github/workflows/test.yml`)
+- **CI**: GitHub Actions on push/PR to `scalable-shazam` (`.github/workflows/test.yml`)
 
 ## Iteration Status
 
@@ -144,8 +150,18 @@ shanano/
 ├── kafka/                   # Placeholder for Iteration 5
 ├── tests/
 │   ├── __init__.py
+│   ├── conftest.py           # Async SQLite engine + fixtures
 │   ├── unit/
+│   │   ├── __init__.py
+│   │   ├── test_config.py
+│   │   ├── test_schemas.py
+│   │   └── test_audio_pipeline.py
 │   └── integration/
+│       ├── __init__.py
+│       ├── test_songs_api.py
+│       ├── test_match_api.py
+│       ├── test_song_service.py
+│       └── test_worker.py
 ├── audio_processing/        # DSP modules (existing)
 ├── controllers/             # SQLite controllers (existing)
 ├── data/                    # Sample audio

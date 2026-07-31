@@ -67,6 +67,18 @@ curl http://localhost:8000/songs/
 open http://localhost:8000/docs
 ```
 
+### Running Tests
+
+Tests use SQLite+aiosqlite (no Docker needed):
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+pytest --cov=. --cov-report=term-missing
+```
+
+CI runs automatically via GitHub Actions on push/PR.
+
 ### Services
 
 | Service | URL | Credentials |
@@ -110,6 +122,13 @@ shanano/
 ├── cli.py                  # Original Typer CLI
 ├── config.py               # App-wide constants (FAN_OUT, sample rate, etc.)
 ├── data/                   # Sample audio files
+├── tests/                   # Pytest test suite (unit + integration)
+│   ├── conftest.py          # Async SQLite fixtures, test client
+│   ├── unit/                # Config, schemas, pipeline tests
+│   └── integration/         # API, song service, worker tests
+├── requirements-dev.txt    # Test dependencies (pytest, httpx, aiosqlite)
+├── pytest.ini              # Pytest config (asyncio_mode=auto)
+├── .github/workflows/      # CI (GitHub Actions)
 ├── AGENTS.md               # Project context for AI assistants
 ├── alembic.ini             # Alembic configuration
 └── requirements.txt
