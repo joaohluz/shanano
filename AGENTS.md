@@ -18,14 +18,25 @@ Learning project: turning a minimal Shazam clone into a distributed, observable,
 ## Relevant Files
 
 - `AGENTS.md` — this file. Preserves project context across opencode sessions.
-- `config.py` — app-wide constants (FAN_OUT, sample rate, etc.)
-- `core/` — fingerprinting pipeline (audio processing, peak detection, hashing)
-- `api/` — FastAPI routes and app factory
-- `infra/` — Docker, Compose, K8s, Helm
-- `observability/` — Grafana dashboards, Prometheus rules, OTel config
-- `airflow/` — DAG definitions
-- `kafka/` — producer/consumer schemas
-- `tests/` — test suite
+- `config.py` — app-wide constants (FAN_OUT, sample rate, UPLOAD_DIR)
+- `api/main.py` — FastAPI app factory with lifespan
+- `api/deps.py` — DB session dependency injection
+- `api/routes/songs.py` — song CRUD + WAV upload endpoint
+- `api/routes/match.py` — match endpoint (stub, returns 501)
+- `core/models.py` — SQLAlchemy models (Song with status tracking, Fingerprint)
+- `core/schemas.py` — Pydantic schemas for request/response
+- `core/database.py` — async engine + session factory (reads DATABASE_URL env var)
+- `core/song_service.py` — async song fingerprinting (load audio, run pipeline, persist)
+- `worker.py` — background worker: polls DB for pending songs every 5s
+- `audio_pipeline.py` — AudioFingerprintPipeline class
+- `audio_processing/` — DSP modules (spectrogram, peaks, filters)
+- `controllers/` — original SQLite-based CLI controllers
+- `infra/Dockerfile` — multi-stage Docker build (python:3.12-slim)
+- `infra/docker-compose.yml` — 4 services: api, worker, db (PostgreSQL), pgadmin
+- `migrations/` — Alembic migrations (versions: initial schema, status+file_path columns)
+- `cli.py` — original Typer CLI (SQLite, still works independently)
+- `tests/` — test suite (mostly original test scripts)
+- `data/` — sample audio files
 
 ## Communication
 
@@ -39,7 +50,7 @@ Learning project: turning a minimal Shazam clone into a distributed, observable,
 - Business logic in `core/`, never in routes
 - Routes thin — parse request, call service, return response
 - Dependency injection for DB sessions
-- Metrics exported on `/metrics`
+- Metrics exported on `/metrics` (not yet implemented)
 - Alembic migrations in `migrations/`
 - Tests mirror the `core/` structure
 - README.md updated as each iteration adds new capabilities
@@ -48,69 +59,86 @@ Learning project: turning a minimal Shazam clone into a distributed, observable,
 
 ```bash
 # Start everything
-docker compose up -d
+docker compose -f infra/docker-compose.yml up -d
 
-# Run migrations
+# Apply migrations
 alembic upgrade head
 
 # Run tests
 pytest
 
 # View logs
-docker compose logs -f api
+docker compose -f infra/docker-compose.yml logs -f api
+docker compose -f infra/docker-compose.yml logs -f worker
+
+# Upload a song to test the pipeline
+curl -X POST -F "file=@data/assets/clean_wavs/music-hd-0001.wav" http://localhost:8000/songs/
+
+# List songs
+curl http://localhost:8000/songs/
 ```
 
-## Iteration Plan
+## Iteration Status
 
-1. FastAPI + Docker — REST API, SQLAlchemy models, Alembic, PostgreSQL via Compose
-2. Observability — structured logs, /metrics, Prometheus + Grafana, OpenTelemetry tracing
-3. Kubernetes — manifests/Helm charts, deploy on kind
-4. Job Scheduling (Airflow) — batch re-indexing, data retention DAGs
-5. Event-Driven (Kafka) — async fingerprint processing pipeline
-6. Advanced Scalability — HPA, Redis caching, read replicas, S3 audio storage, load testing
+### ✅ Iteration 1: FastAPI + Docker — COMPLETE
 
-## Directory Layout (target)
+- REST API with song CRUD and match endpoints
+- SQLAlchemy async models (Song with status tracking, Fingerprint)
+- Alembic migrations for schema versioning
+- Async worker that polls for pending songs and fingerprints them
+- Docker Compose with 4 services
+
+### 🔜 Upcoming Iterations
+
+2. **Observability** — structured logs, /metrics, Prometheus + Grafana, OpenTelemetry tracing
+3. **Kubernetes** — manifests/Helm charts, deploy on kind
+4. **Job Scheduling (Airflow)** — batch re-indexing, data retention DAGs
+5. **Event-Driven (Kafka)** — async fingerprint processing pipeline
+6. **Advanced Scalability** — HPA, Redis caching, read replicas, S3 audio storage, load testing
+
+## Directory Layout (current)
 
 ```
 shanano/
 ├── api/
 │   ├── __init__.py
 │   ├── main.py              # FastAPI app factory
-│   ├── deps.py              # DI (DB sessions, etc.)
+│   ├── deps.py              # DI (DB sessions)
 │   └── routes/
-│       ├── songs.py
-│       └── match.py
+│       ├── __init__.py
+│       ├── songs.py         # Song CRUD + WAV upload
+│       └── match.py         # Match endpoint (stub)
 ├── core/
 │   ├── __init__.py
-│   ├── models.py            # SQLAlchemy models
-│   ├── schemas.py            # Pydantic schemas
-│   ├── fingerprint.py        # hashing logic
-│   ├── pipeline.py           # AudioFingerprintPipeline
-│   ├── song_service.py
-│   └── match_service.py
+│   ├── database.py          # Async engine + session factory
+│   ├── models.py            # SQLAlchemy models + ProcessingStatus enum
+│   ├── schemas.py           # Pydantic schemas
+│   └── song_service.py      # Async song fingerprinting
 ├── infra/
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   ├── k8s/
-│   └── helm/
-├── observability/
-│   ├── prometheus/
-│   └── grafana/
-├── airflow/
-│   └── dags/
-├── kafka/
-│   ├── schemas/
-│   └── docker-compose.kafka.yml
+│   ├── __init__.py
+│   ├── Dockerfile           # Multi-stage python:3.12-slim
+│   └── docker-compose.yml   # API + Worker + PostgreSQL + pgAdmin
+├── migrations/
+│   ├── env.py               # Async Alembic env
+│   ├── script.py.mako
+│   └── versions/
+│       ├── 8213ee7ae066_create_songs_and_fingerprints_tables.py
+│       └── f8aa4bb84303_add_status_and_file_path_to_songs.py
+├── observability/           # Placeholder for Iteration 2
+├── airflow/                 # Placeholder for Iteration 4
+├── kafka/                   # Placeholder for Iteration 5
 ├── tests/
+│   ├── __init__.py
 │   ├── unit/
 │   └── integration/
-├── audio_processing/         # existing DSP modules
-├── controllers/              # existing (will migrate to core/)
-├── data/                     # existing sample audio
-├── AGENTS.md
-├── config.py
+├── audio_processing/        # DSP modules (existing)
+├── controllers/             # SQLite controllers (existing)
+├── data/                    # Sample audio
+├── worker.py                # Background fingerprinting worker
+├── audio_pipeline.py        # AudioFingerprintPipeline class
+├── cli.py                   # Original Typer CLI
+├── config.py                # App-wide constants
 ├── requirements.txt
 ├── alembic.ini
-├── migrations/
-└── pyproject.toml
+└── AGENTS.md
 ```
