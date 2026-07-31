@@ -13,18 +13,22 @@ The system processes audio through several steps:
 5. **Database Storage**: Store fingerprints with song metadata
 6. **Matching**: Compare query fingerprints against database to find matches (not yet wired)
 
-## Current Status (Iteration 1 — complete)
+## Current Status (Iteration 1 & 2 — complete)
 
 ### What's built
 
 | Component | What it does |
 |---|---|
-| **FastAPI app** (`api/main.py`) | REST API with endpoints for songs CRUD and matching |
+| **FastAPI app** (`api/main.py`) | REST API with endpoints for songs CRUD, matching, and Prometheus `/metrics` |
 | **SQLAlchemy models** (`core/models.py`) | `Song` (with status tracking) and `Fingerprint` tables |
 | **Async PostgreSQL** (`core/database.py`) | asyncpg engine with FastAPI dependency injection |
 | **Alembic** (`migrations/`) | Schema versioning — 2 migrations applied |
 | **Async Worker** (`worker.py`) | Background service that polls for pending songs, fingerprints them via the audio pipeline, stores results |
-| **Docker Compose** (`infra/docker-compose.yml`) | 4 containers: API, Worker, PostgreSQL, pgAdmin |
+| **Prometheus Metrics** (`core/metrics.py`) | Custom metrics: songs uploaded/processed, processing duration, HTTP request rate/duration, songs by status, worker poll cycles |
+| **Structured Logging** (`core/logging.py`) | JSON-format logging via `structlog` with ISO timestamps, service name context |
+| **Prometheus** | Scrapes `/metrics` from API (`:8000`) and Worker (`:8001`) every 10s |
+| **Grafana** | Pre-provisioned datasource + dashboard (6 panels) — auto-deployed |
+| **Docker Compose** (`infra/docker-compose.yml`) | 6 containers: API, Worker, PostgreSQL, pgAdmin, Prometheus, Grafana |
 
 ### API Endpoints
 
@@ -39,11 +43,40 @@ The system processes audio through several steps:
 
 ### Processing Flow
 
+```mermaid
+graph TB
+    USER([Client])
+
+    API[FastAPI :8000<br/>songs / match / metrics]
+    WORKER[Worker :8001<br/>/metrics]
+
+    PG[(PostgreSQL :5432)]
+    VOL[(Uploads Volume)]
+
+    PROM[Prometheus :9090]
+    GRAF[Grafana :3000]
+
+    USER -->|upload / list| API
+    USER -->|dashboards| GRAF
+
+    API -->|save WAV| VOL
+    API -->|CRUD| PG
+
+    WORKER -->|poll pending| PG
+    WORKER -->|read WAV| VOL
+    WORKER -->|store fingerprints| PG
+
+    API -->|scrape :8000/metrics| PROM
+    WORKER -->|scrape :8001/metrics| PROM
+    PROM -->|datasource| GRAF
+```
+
 1. `POST /songs/` — saves WAV to shared uploads volume, creates `Song` row with `status: pending`
 2. **Worker** polls DB every 5s, picks up pending songs
 3. Worker runs `AudioFingerprintPipeline` (normalize → lowpass → spectrogram → peaks → hashes)
 4. Fingerprints stored in `fingerprints` table, song status updated to `completed`
 5. `GET /songs/` shows fingerprint count
+6. **Observability** — Prometheus scrapes `/metrics` from API and Worker; Grafana renders pre-built dashboard with 6 panels (songs uploaded, songs by status, processing rate, p99 duration, HTTP rate, HTTP p99)
 
 ### Quick Start
 
@@ -63,8 +96,14 @@ docker compose -f infra/docker-compose.yml logs -f worker
 # List songs (see fingerprint count increase)
 curl http://localhost:8000/songs/
 
+# View metrics
+curl http://localhost:8000/metrics
+
 # OpenAPI docs
 open http://localhost:8000/docs
+
+# Grafana dashboard
+open http://localhost:3000
 ```
 
 ### Running Tests
@@ -85,6 +124,10 @@ CI runs automatically via GitHub Actions on push/PR.
 |---|---|---|
 | API | `http://localhost:8000` | — |
 | OpenAPI docs | `http://localhost:8000/docs` | — |
+| API metrics | `http://localhost:8000/metrics` | — |
+| Worker metrics | `http://localhost:8001/metrics` | — |
+| Prometheus | `http://localhost:9090` | — |
+| Grafana | `http://localhost:3000` | `admin` / `shanano` |
 | pgAdmin | `http://localhost:5050` | `admin@shanano.dev` / `shanano` |
 | PostgreSQL | `localhost:5432` | `shanano` / `shanano` / `shanano` |
 
@@ -93,22 +136,30 @@ CI runs automatically via GitHub Actions on push/PR.
 ```
 shanano/
 ├── api/                    # FastAPI routes and app factory
-│   ├── main.py             # App factory with lifespan (auto-creates tables)
+│   ├── main.py             # App factory with lifespan, /metrics, HTTP middleware
 │   ├── deps.py             # DI: get_db session dependency
 │   └── routes/
 │       ├── songs.py        # Song CRUD + upload
 │       └── match.py        # Match endpoint (stub)
 ├── core/                   # Business logic
 │   ├── database.py         # Async engine + session factory (reads DATABASE_URL from env)
+│   ├── logging.py          # Structured JSON logging via structlog
+│   ├── metrics.py          # Prometheus custom metrics (counters, histograms, gauges)
 │   ├── models.py           # SQLAlchemy models (Song, Fingerprint, ProcessingStatus)
 │   ├── schemas.py          # Pydantic request/response schemas
 │   └── song_service.py     # Async song processing (load audio, pipeline, persist)
 ├── infra/                  # Containerization
 │   ├── Dockerfile          # Multi-stage build (python:3.12-slim + librosa deps)
-│   └── docker-compose.yml  # API + Worker + PostgreSQL + pgAdmin
+│   └── docker-compose.yml  # 6 services: API, Worker, PostgreSQL, pgAdmin, Prometheus, Grafana
 ├── migrations/             # Alembic
 │   ├── env.py              # Async-compatible Alembic env
 │   └── versions/           # Migration scripts (2 so far)
+├── observability/          # Prometheus & Grafana config
+│   ├── prometheus/
+│   │   └── prometheus.yml  # Scrape config for API (:8000) and Worker (:8001)
+│   └── grafana/
+│       ├── datasources/    # Auto-provisioned Prometheus datasource
+│       └── dashboards/     # Pre-built dashboard with 6 panels
 ├── worker.py               # Background worker: polls for pending songs, fingerprints them
 ├── audio_processing/       # Original DSP modules (spectrogram, peaks, filters)
 │   ├── audio.py            # load_audio, record_audio (lazy sounddevice import)
