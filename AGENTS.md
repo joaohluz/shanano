@@ -64,8 +64,14 @@ docker compose -f infra/docker-compose.yml up -d
 # Apply migrations
 alembic upgrade head
 
-# Run tests
+# Install test dependencies
+pip install -r requirements-dev.txt
+
+# Run tests (local SQLite, no Docker needed)
 pytest
+
+# Run with coverage
+pytest --cov=. --cov-report=term-missing
 
 # View logs
 docker compose -f infra/docker-compose.yml logs -f api
@@ -77,6 +83,15 @@ curl -X POST -F "file=@data/assets/clean_wavs/music-hd-0001.wav" http://localhos
 # List songs
 curl http://localhost:8000/songs/
 ```
+
+## Testing
+
+- **pytest** with `pytest-asyncio` (auto mode) — no decorators needed for async tests
+- **Test DB**: SQLite+aiosqlite in-memory (set via `DATABASE_URL` env var in `conftest.py`)
+- **FastAPI TestClient**: via `httpx.AsyncClient` with `get_db` dependency override
+- **Test isolation**: each test gets a fresh DB engine + session (function-scoped fixtures)
+- **Markers**: `unit` (no external deps) and `integration` (DB, API)
+- **CI**: GitHub Actions on push/PR to `main` (`.github/workflows/test.yml`)
 
 ## Iteration Status
 
