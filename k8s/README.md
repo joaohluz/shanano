@@ -35,6 +35,7 @@ kubectl apply -f k8s/05-worker.yaml
 kubectl apply -f k8s/06-loadgen.yaml
 kubectl apply -f k8s/07-prometheus.yaml
 kubectl apply -f k8s/08-grafana.yaml
+kubectl apply -f k8s/09-pgadmin.yaml
 
 # Or in one shot (order is irrelevant to kube, it resolves dependencies)
 kubectl apply -f k8s/
@@ -51,6 +52,9 @@ kubectl -n shanano get pods -w
 | Worker metrics | `http://localhost:30001/metrics` |
 | Prometheus | `http://localhost:30900` |
 | Grafana | `http://localhost:30030` (admin / shanano) |
+| pgAdmin | `http://localhost:30050` (`admin@shanano.dev` / `shanano`) — connect to host `postgres`, port `5432`, user/pass `shanano` |
+
+> If you created the cluster before pgAdmin was added, its NodePort isn't mapped. Use `kubectl -n shanano port-forward svc/pgadmin 5050:80` → `http://localhost:5050`, or recreate the cluster with the updated `kind-config.yaml`.
 
 The loadgen deployment starts hitting the API automatically, so the Grafana dashboard should show the request-rate wave (up, down, up...) within ~2 minutes.
 
@@ -74,6 +78,25 @@ kubectl -n shanano set env deploy/loadgen LOADGEN_MIN_RPS=5 LOADGEN_MAX_RPS=50
 # Tear everything down
 kind delete cluster --name shanano
 ```
+
+## Stop / Restart
+
+Three levels of stopping, depending on how long you're done for:
+
+```bash
+# 1. Pause the workload but keep the cluster and data (fast, reversible)
+kubectl -n shanano scale deploy --all --replicas=0
+# resume:
+kubectl -n shanano scale deploy --all --replicas=1
+
+# 2. Stop just the fake traffic (keep API/worker/observability running)
+kubectl -n shanano scale deploy/loadgen --replicas=0
+
+# 3. Full teardown — deletes the cluster, its containers, and all data
+kind delete cluster --name shanano
+```
+
+Scaling a deployment to 0 leaves its `StatefulSet`, PVCs, and stored data intact (postgres data, uploaded WAVs, Prometheus TSDB) — pods are just removed. `kind delete cluster` destroys everything: the node container, PVCs, and any data not committed to the repo.
 
 ## Notes
 

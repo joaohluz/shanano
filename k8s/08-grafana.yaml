@@ -41,13 +41,13 @@ data:
       "version": 1,
       "panels": [
         {
-          "title": "Songs Uploaded",
+          "title": "Songs Uploaded (rate)",
           "type": "stat",
           "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
           "targets": [
             {
-              "expr": "sum(shanano_songs_uploaded_total)",
-              "legendFormat": "Total"
+              "expr": "sum(rate(shanano_songs_uploaded_total[1m]))",
+              "legendFormat": "uploads/sec"
             }
           ]
         },
