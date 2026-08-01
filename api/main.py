@@ -14,7 +14,8 @@ from core.metrics import (
     http_request_duration,
     songs_by_status,
 )
-from api.routes import songs, match
+from api.routes import auth, songs, match
+from core.user_service import seed_users
 
 setup_logging("api")
 logger = get_logger("api")
@@ -24,12 +25,17 @@ logger = get_logger("api")
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    async with async_session() as db:
+        created = await seed_users(db)
+        if created:
+            logger.info("seeded bootstrap users", created=created)
     yield
     await engine.dispose()
 
 
 app = FastAPI(title="Shanano", version="0.1.0", lifespan=lifespan)
 
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(songs.router, prefix="/songs", tags=["songs"])
 app.include_router(match.router, prefix="/match", tags=["match"])
 

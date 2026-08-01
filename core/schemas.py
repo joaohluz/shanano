@@ -1,8 +1,9 @@
+from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from core.models import ProcessingStatus
+from core.models import ProcessingStatus, UserRole
 
 
 class SongOut(BaseModel):
@@ -37,3 +38,23 @@ class SongListOut(BaseModel):
 class MatchResultOut(BaseModel):
     song_name: str
     score: int
+
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=64)
+    password: str = Field(min_length=8, max_length=128)
+    role: UserRole = UserRole.user
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    role: UserRole
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"

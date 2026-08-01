@@ -16,6 +16,20 @@ IA_DETAILS_URL = "https://archive.org/details"
 # (lossless FLAC/OGG first, M4A/MP3 as fallback per Iteration 4 spec).
 CATALOG_AUDIO_EXTENSIONS = (".flac", ".ogg", ".m4a", ".mp3")
 
+# Auth (Iteration 4, Phase 4.3)
+# JWT_SECRET has NO default: it must come from the environment (never hardcode it).
+# A RuntimeError is raised if a token is created/decoded without it.
+JWT_SECRET = os.getenv("JWT_SECRET")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_EXPIRES_MINUTES = int(os.getenv("JWT_EXPIRES_MINUTES", "1440"))
+
+# Startup-seeded users. Defaults are local-dev only; set real credentials via env
+# in any non-local deployment (docker-compose/k8s pass ADMIN_*/LOADGEN_* vars).
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
+LOADGEN_USERNAME = os.getenv("LOADGEN_USERNAME", "loadgen")
+LOADGEN_PASSWORD = os.getenv("LOADGEN_PASSWORD", "loadgen")
+
 FAN_OUT = 15           # number of target peaks per anchor
 MIN_TIME_DELTA = 1
 MAX_TIME_DELTA = 200

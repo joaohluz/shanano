@@ -4,10 +4,11 @@ class TestListSongs:
         assert response.status_code == 200
         assert response.json() == []
 
-    async def test_returns_list_of_songs(self, client):
+    async def test_returns_list_of_songs(self, client, auth_headers):
         response = await client.post(
             "/songs/",
             files={"file": ("test.wav", b"content", "audio/wav")},
+            headers=auth_headers,
         )
         assert response.status_code == 201
         song_id = response.json()["id"]
@@ -18,7 +19,7 @@ class TestListSongs:
         assert data[0]["name"] == "test.wav"
         assert data[0]["id"] == song_id
 
-    async def test_fingerprint_count(self, client, db_engine):
+    async def test_fingerprint_count(self, client, db_engine, auth_headers):
         from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
         from core.models import Song, Fingerprint
         from sqlalchemy import select
@@ -30,6 +31,7 @@ class TestListSongs:
         response = await client.post(
             "/songs/",
             files={"file": ("test.wav", b"content", "audio/wav")},
+            headers=auth_headers,
         )
         assert response.status_code == 201
         song_id = response.json()["id"]
@@ -53,10 +55,11 @@ class TestListSongs:
 
 
 class TestGetSong:
-    async def test_get_existing_song(self, client):
+    async def test_get_existing_song(self, client, auth_headers):
         response = await client.post(
             "/songs/",
             files={"file": ("test.wav", b"content", "audio/wav")},
+            headers=auth_headers,
         )
         song_id = response.json()["id"]
 
@@ -72,7 +75,7 @@ class TestGetSong:
 
 
 class TestAddSong:
-    async def test_upload_wav_file(self, client, monkeypatch):
+    async def test_upload_wav_file(self, client, monkeypatch, auth_headers):
         import tempfile
         tmp = tempfile.mkdtemp()
         monkeypatch.setattr("api.routes.songs.UPLOAD_DIR", tmp)
@@ -80,6 +83,7 @@ class TestAddSong:
         response = await client.post(
             "/songs/",
             files={"file": ("test.wav", b"fake-wav-content", "audio/wav")},
+            headers=auth_headers,
         )
         assert response.status_code == 201
         data = response.json()
@@ -90,36 +94,61 @@ class TestAddSong:
         from pathlib import Path
         assert (Path(tmp) / "test.wav").exists()
 
-    async def test_rejects_non_wav(self, client):
+    async def test_rejects_non_wav(self, client, auth_headers):
         response = await client.post(
             "/songs/",
             files={"file": ("test.mp3", b"fake-content", "audio/mpeg")},
+            headers=auth_headers,
         )
         assert response.status_code == 400
         assert "WAV" in response.json()["detail"]
 
-    async def test_rejects_no_filename(self, client):
+    async def test_rejects_no_filename(self, client, auth_headers):
         response = await client.post(
             "/songs/",
             files={"file": ("", b"content", "audio/wav")},
+            headers=auth_headers,
         )
         assert response.status_code == 422
 
+    async def test_requires_auth(self, client):
+        response = await client.post(
+            "/songs/",
+            files={"file": ("test.wav", b"content", "audio/wav")},
+        )
+        assert response.status_code == 401
+
 
 class TestDeleteSong:
-    async def test_delete_existing(self, client):
+    async def test_delete_existing(self, client, admin_headers):
         response = await client.post(
             "/songs/",
             files={"file": ("delete_me.wav", b"content", "audio/wav")},
+            headers=admin_headers,
         )
         song_id = response.json()["id"]
 
-        response = await client.delete(f"/songs/{song_id}")
+        response = await client.delete(f"/songs/{song_id}", headers=admin_headers)
         assert response.status_code == 204
 
         response = await client.get(f"/songs/{song_id}")
         assert response.status_code == 404
 
-    async def test_delete_nonexistent(self, client):
-        response = await client.delete("/songs/999")
+    async def test_delete_nonexistent(self, client, admin_headers):
+        response = await client.delete("/songs/999", headers=admin_headers)
         assert response.status_code == 404
+
+    async def test_delete_requires_admin(self, client, auth_headers):
+        response = await client.post(
+            "/songs/",
+            files={"file": ("delete_me.wav", b"content", "audio/wav")},
+            headers=auth_headers,
+        )
+        song_id = response.json()["id"]
+
+        response = await client.delete(f"/songs/{song_id}", headers=auth_headers)
+        assert response.status_code == 403
+
+    async def test_delete_requires_auth(self, client):
+        response = await client.delete("/songs/999")
+        assert response.status_code == 401

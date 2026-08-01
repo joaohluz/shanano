@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_db
+from api.deps import get_current_user, get_db, require_admin
 from config import UPLOAD_DIR
 from core.metrics import songs_uploaded
-from core.models import Fingerprint, Song
+from core.models import Fingerprint, Song, User
 from core.schemas import SongOut, SongListOut
 
 router = APIRouter()
@@ -56,7 +56,11 @@ async def get_song(song_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/", response_model=SongOut, status_code=201)
-async def add_song(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+async def add_song(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
     if not file.filename or not file.filename.endswith(".wav"):
         raise HTTPException(status_code=400, detail="Only WAV files are supported")
 
@@ -77,7 +81,11 @@ async def add_song(file: UploadFile = File(...), db: AsyncSession = Depends(get_
 
 
 @router.delete("/{song_id}", status_code=204)
-async def delete_song(song_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_song(
+    song_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
     result = await db.execute(select(Song).where(Song.id == song_id))
     song = result.scalar_one_or_none()
     if not song:
