@@ -27,6 +27,17 @@ class Song(Base):
     )
     file_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
+    # Iteration 4: catalog metadata (populated by the Internet Archive catalog job)
+    artist: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    album: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    genre: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    cover_art_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    source: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, index=True
+    )
+
     fingerprints: Mapped[list["Fingerprint"]] = relationship(
         "Fingerprint", back_populates="song", cascade="all, delete-orphan"
     )
