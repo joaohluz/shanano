@@ -21,6 +21,13 @@ async def list_songs(db: AsyncSession = Depends(get_db)):
             Song.id,
             Song.name,
             Song.status,
+            Song.artist,
+            Song.album,
+            Song.year,
+            Song.genre,
+            Song.cover_art_url,
+            Song.source,
+            Song.source_url,
             func.count(Fingerprint.hash).label("fingerprint_count"),
         )
         .outerjoin(Fingerprint, Song.id == Fingerprint.song_id)
@@ -30,6 +37,9 @@ async def list_songs(db: AsyncSession = Depends(get_db)):
     return [
         SongListOut(
             id=row.id, name=row.name, status=row.status,
+            artist=row.artist, album=row.album, year=row.year,
+            genre=row.genre, cover_art_url=row.cover_art_url,
+            source=row.source, source_url=row.source_url,
             fingerprint_count=row.fingerprint_count,
         )
         for row in rows
