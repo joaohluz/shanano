@@ -253,5 +253,5 @@ async def fetch_catalog_batch(
 
     if client is not None:
         return await _run(client)
-    async with httpx.AsyncClient() as aclient:
+    async with httpx.AsyncClient(follow_redirects=True) as aclient:
         return await _run(aclient)

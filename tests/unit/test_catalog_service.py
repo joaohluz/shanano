@@ -270,3 +270,45 @@ class TestFetchCatalogBatch:
             select(Song).where(Song.source_url == "https://archive.org/details/good")
         )
         assert result.scalar_one() is not None
+
+    async def test_default_client_follows_download_redirects(
+        self, db_session, tmp_path, monkeypatch
+    ):
+        """IA download URLs 302-redirect to a CDN; the internally-created
+        client must follow them or every download fails (regression test)."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "advancedsearch.php" in url:
+                return httpx.Response(
+                    200,
+                    json={"response": {"docs": [{"identifier": "gd1990"}]}},
+                )
+            if url.startswith("https://archive.org/metadata/"):
+                return httpx.Response(200, json=sample_metadata())
+            if url.startswith("https://archive.org/download/"):
+                return httpx.Response(
+                    302,
+                    headers={"Location": "https://cdn.archive.org/gd1990.flac"},
+                )
+            if url.startswith("https://cdn.archive.org/"):
+                return httpx.Response(200, content=b"redirected-bytes")
+            return httpx.Response(404)
+
+        captured = {}
+        real_client = httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), follow_redirects=True
+        )
+
+        def client_factory(**kwargs):
+            captured["kwargs"] = kwargs
+            return real_client
+
+        monkeypatch.setattr("core.catalog_service.httpx.AsyncClient", client_factory)
+
+        ingested = await fetch_catalog_batch(
+            db_session, max_items=1, upload_dir=str(tmp_path)
+        )
+        assert ingested == 1
+        assert captured["kwargs"].get("follow_redirects") is True
+        assert (tmp_path / "gd1990-07-08d1t01.flac").read_bytes() == b"redirected-bytes"
