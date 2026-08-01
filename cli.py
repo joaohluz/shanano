@@ -3,6 +3,7 @@ import threading
 import time
 import typer
 import rich
+from rich.table import Table
 
 from controllers.database import connect, init_db
 import controllers.song_manager as song_manager
@@ -21,7 +22,7 @@ audio_pipeline = AudioFingerprintPipeline()
 @app.command()
 def list():
     rich.print(f"[blue]Listing songs in DB:[/blue]")
-    table = rich.table.Table("ID", "Name", "Fingerprints", title="Songs in Database")
+    table = Table("ID", "Name", "Fingerprints", title="Songs in Database")
     table.style = "magenta"
     table.row_styles = ["none", "dim"]
     for song in song_manager.list_songs(conn):
