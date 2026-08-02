@@ -1,8 +1,9 @@
 # Shanano — Feature Docs
 
-Explanations of how each Shanano feature works **today** (Iterations 1–3 complete,
-Iteration 4 partially implemented: metadata, catalog ingestion, auth, and real
-matching are done; the webapp and the K8s catalog CronJob are not).
+Explanations of how each Shanano feature works **today** (Iterations 1–4
+complete: catalog ingestion, auth, real matching, and the webapp are all
+implemented). The only spec item still pending is the K8s catalog CronJob +
+secret (`k8s/README.md` → "Planned").
 
 Each page covers the same four angles so you can compare features easily:
 
@@ -17,7 +18,7 @@ Each page covers the same four angles so you can compare features easily:
 |---|---|---|
 | Audio fingerprinting | called by worker & match endpoint | [fingerprinting.md](fingerprinting.md) |
 | Song ingestion (upload → worker) | `POST /songs/` + 5s worker poll | [song-ingestion.md](song-ingestion.md) |
-| Catalog ingestion (Internet Archive) | `catalog_fetch.py` CLI / CronJob | [catalog-ingestion.md](catalog-ingestion.md) |
+| Catalog ingestion (Internet Archive) | `catalog_fetch.py` CLI | [catalog-ingestion.md](catalog-ingestion.md) |
 | Real matching | `POST /match/` | [matching.md](matching.md) |
 | Auth (JWT + roles) | startup seeding, login, protected routes | [auth.md](auth.md) |
 | Observability (metrics + logging) | HTTP requests, worker polls, Prometheus scrapes | [observability.md](observability.md) |
@@ -38,7 +39,7 @@ buffer instead of a temp file.
 graph TB
     USER([Browser / curl])
     LOADGEN[loadgen.py<br/>fake traffic]
-    CATCLI[catalog_fetch.py<br/>CronJob / CLI]
+    CATCLI[catalog_fetch.py<br/>CLI]
 
     API[FastAPI :8000<br/>auth / songs / match / metrics]
     WORKER[Worker :8001<br/>poll + fingerprint + /metrics]

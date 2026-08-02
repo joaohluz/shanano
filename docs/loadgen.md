@@ -65,7 +65,7 @@ Flags/env: `LOADGEN_TARGET`, `LOADGEN_WORKERS`, `LOADGEN_MIN_RPS`,
 
 ## Known gap
 
-The loadgen doesn't authenticate yet. Since Iteration 4 made upload/delete/match
+The loadgen doesn't authenticate yet. Since Iteration 4 made upload/delete
 auth-protected, those requests currently return 401 (the generator logs them as
 non-2xx but keeps running). Wiring login + a `Bearer` header into loadgen is
-still pending (planned alongside the webapp in Iteration 4).
+still pending.

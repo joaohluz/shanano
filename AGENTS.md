@@ -23,15 +23,15 @@ Learning project: turning a minimal Shazam clone into a distributed, observable,
 - `api/deps.py` — DB session dependency injection
 - `api/routes/songs.py` — song CRUD + WAV upload endpoint
 - `api/routes/match.py` — match endpoint (public, no auth; WAV query decoded from in-memory BytesIO per ADR-0001)
-- `api/routes/auth.py` — planned: register (admin-only), login, /me (Iteration 4)
+- `api/routes/auth.py` — register (admin-only), login, /me
 - `core/catalog_service.py` — Internet Archive catalog ingestion: search a collection (`fetch_catalog_batch`) or ingest a hand-picked list of links (`ingest_links`); a multi-track item becomes one song per track, deduped per-track by download URL
-- `core/match_service.py` — planned: async fingerprint matching ported from `controllers/match_service.py` (Iteration 4)
-- `core/security.py` — planned: bcrypt hashing + JWT create/verify (Iteration 4)
-- `catalog_fetch.py` — planned: CLI entrypoint for one IA fetch batch (Iteration 4)
+- `core/match_service.py` — async fingerprint matching ported from `controllers/match_service.py` (hash lookup → offset voting → best candidate)
+- `core/security.py` — bcrypt hashing + JWT create/verify (HS256)
+- `catalog_fetch.py` — CLI entrypoint for one IA fetch batch
 - `seed.py` — seed pipeline CLI: `ingest` (links file → pending songs), `process` (one-shot fingerprinting), `dump` (songs+fingerprints+audio → compressed tar.gz), `restore`, `build` (all four)
 - `core/seed_service.py` — portable, engine-agnostic catalog dump/load (`dump_seed` / `load_seed`); the seed is the offline demo data source
-- `webapp/` — static mic-only SPA (record ~5–15 s → match anonymously), no build step; served by FastAPI via `StaticFiles` (spec: `docs/webapp.md`)
-- `core/models.py` — SQLAlchemy models (Song with status tracking, Fingerprint)
+- `webapp/` — static mic-only SPA (record ~5–15 s → match anonymously), no build step; served by FastAPI via `StaticFiles` (docs: `docs/webapp.md`)
+- `core/models.py` — SQLAlchemy models (Song with status tracking, Fingerprint, User)
 - `core/schemas.py` — Pydantic schemas for request/response
 - `core/database.py` — async engine + session factory (reads DATABASE_URL env var)
 - `core/metrics.py` — Prometheus custom metrics (counters, histograms, gauges)
@@ -42,10 +42,10 @@ Learning project: turning a minimal Shazam clone into a distributed, observable,
 - `k8s/` — Kubernetes manifests for kind (namespace, configmap, postgres StatefulSet, api/worker/loadgen Deployments, prometheus, grafana) + `k8s/README.md` deploy walkthrough
 - `audio_pipeline.py` — AudioFingerprintPipeline class
 - `audio_processing/` — DSP modules (spectrogram, peaks, filters)
-- `controllers/` — original SQLite-based CLI controllers (incl. `match_service.py` — source of the matching algorithm to port)
-- `infra/Dockerfile` — multi-stage Docker build (python:3.12-slim) — will add `ffmpeg` for MP3 decode (Iteration 4)
-- `infra/docker-compose.yml` — 6 services: api, worker, db (PostgreSQL), pgadmin, prometheus, grafana
-- `migrations/` — Alembic migrations (versions: initial schema, status+file_path columns)
+- `controllers/` — original SQLite-based CLI controllers (incl. `match_service.py` — the reference matching algorithm `core/match_service.py` was ported from)
+- `infra/Dockerfile` — multi-stage Docker build (python:3.12-slim, includes `ffmpeg` for MP3 decode)
+- `infra/docker-compose.yml` — 7 services: api, worker, db (PostgreSQL), pgadmin, prometheus, grafana, loadgen
+- `migrations/` — Alembic migrations (versions: initial schema, status+file_path, catalog metadata, users)
 - `observability/prometheus/prometheus.yml` — scrape config for api (:8000) and worker (:8001)
 - `observability/grafana/` — provisioned datasource + dashboard config
 - `cli.py` — original Typer CLI (SQLite, still works independently)
@@ -145,7 +145,7 @@ curl http://localhost:8000/songs/
 - loadgen wired into docker-compose too (`docker compose up -d loadgen`)
 - Tests: `tests/unit/test_loadgen.py`
 
-### 🔜 Iteration 4: Catalog Ingestion, Auth, Webapp & Matching — SPEC (not yet implemented)
+### ✅ Iteration 4: Catalog Ingestion, Auth, Webapp & Matching — COMPLETE
 
 Goals: populate the catalog automatically from a safe open-source source, secure the API for a future hosted deployment, and give users a web UI to upload songs and match audio with full metadata.
 
@@ -170,10 +170,11 @@ Goals: populate the catalog automatically from a safe open-source source, secure
 6. **K8s** — `k8s/10-catalog-cronjob.yaml` (mounts `uploads-pvc`, env from configmap + secret), `k8s/secret.yaml` (JWT secret, admin creds), configmap keys (`CATALOG_COLLECTION`, `CATALOG_MAX_ITEMS`, `JWT_*`). Update docker-compose (ffmpeg, auth env, catalog service), `k8s/README.md`, `README.md`, AGENTS.md.
 7. **Tests** — update `test_songs_api.py`/`test_worker.py` for auth (admin + user token fixtures); new `test_catalog_service.py`, `test_auth.py`, `test_match_api.py`.
 
-#### Open questions to refine before implementation
+#### Remaining items (post-Iteration-4 gaps)
 
-- CronJob schedule (proposed: every 30 min) and batch sizing vs the 1Gi `uploads-pvc` + serial worker.
-- Which IA file formats to prefer (FLAC/OGG first, MP3 fallback) given the serial worker.
+- **K8s catalog CronJob + secret** — `k8s/10-catalog-cronjob.yaml` and `k8s/secret.yaml` are still not written; the catalog runs via the CLI/`make catalog` only (see `k8s/README.md` → "Planned").
+- **Compose/K8s auth env** — `docker-compose.yml` and the k8s manifests don't set `JWT_SECRET` / `ADMIN_*` / `LOADGEN_*`, so the auth-protected endpoints aren't usable in those deployments yet.
+- **loadgen auth** — `loadgen.py` doesn't log in or attach a `Bearer` header, so its upload/delete requests currently return 401 (it logs them and keeps running).
 
 ### 🔜 Upcoming Iterations (beyond 4)
 
@@ -220,15 +221,15 @@ shanano/
 │   ├── 07-prometheus.yaml   # ConfigMap + Deployment + NodePort :30900
 │   ├── 08-grafana.yaml      # Provisioning ConfigMaps + Deployment + NodePort :30030
 │   ├── 09-pgadmin.yaml      # pgAdmin Deployment + NodePort :30050
-│   ├── 10-catalog-cronjob.yaml  # Iteration 4: IA fetch CronJob
-│   ├── secret.yaml          # Iteration 4: JWT secret + admin creds
 │   └── README.md            # kind deploy walkthrough
 ├── migrations/
 │   ├── env.py               # Async Alembic env
 │   ├── script.py.mako
 │   └── versions/
 │       ├── 8213ee7ae066_create_songs_and_fingerprints_tables.py
-│       └── f8aa4bb84303_add_status_and_file_path_to_songs.py
+│       ├── f8aa4bb84303_add_status_and_file_path_to_songs.py
+│       ├── a3f0d86e1588_add_catalog_metadata_to_songs.py
+│       └── 8e8eef82eab6_create_users_table.py
 ├── observability/           # Prometheus scrape config + Grafana provisioning
 │   ├── prometheus/
 │   │   └── prometheus.yml   # Scrapes api (:8000) and worker (:8001)
@@ -249,7 +250,8 @@ shanano/
 │   │   ├── test_catalog_service.py
 │   │   ├── test_loadgen.py
 │   │   ├── test_match_service.py
-│   │   └── test_seed_service.py
+│   │   ├── test_seed_service.py
+│   │   └── test_auth.py
 │   └── integration/
 │       ├── __init__.py
 │       ├── test_songs_api.py

@@ -1,6 +1,6 @@
 # ADR-0001 — Match clients always send WAV (PCM)
 
-- **Status**: Decided (implementation pending)
+- **Status**: Decided and implemented
 - **Date**: 2026-08-02
 - **Scope**: client → `POST /match/` query path only. Catalog ingestion and
   `POST /songs/` uploads are unaffected (they may still be WAV/MP3/FLAC/OGG/M4A).
