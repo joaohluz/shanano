@@ -143,3 +143,73 @@ class TestPipelineSingleton:
         from core.song_service import pipeline
         from audio_pipeline import AudioFingerprintPipeline
         assert isinstance(pipeline, AudioFingerprintPipeline)
+
+
+class TestProcessPendingSongs:
+    async def test_processes_all_pending_in_one_shot(self, db_engine):
+        from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+        from core.models import Song, ProcessingStatus
+        from core.song_service import process_pending_songs
+
+        maker = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with maker() as session:
+            session.add_all(
+                [
+                    Song(name="one.wav", file_path="/fake/one.wav"),
+                    Song(name="two.wav", file_path="/fake/two.wav"),
+                ]
+            )
+            await session.commit()
+
+        fake_audio = np.sin(np.linspace(0, 2 * np.pi * 440 * 2, 44100))
+        fake_sr = 22050
+        with patch("core.song_service.load_audio", return_value=(fake_audio, fake_sr)):
+            async with maker() as session:
+                completed, failed = await process_pending_songs(session)
+
+        assert (completed, failed) == (2, 0)
+
+        async with maker() as session:
+            result = await session.execute(select(Song).order_by(Song.id))
+            songs = result.scalars().all()
+            assert all(s.status == ProcessingStatus.completed for s in songs)
+
+    async def test_returns_failed_count_for_broken_songs(self, db_engine):
+        from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+        from core.models import Song, ProcessingStatus
+        from core.song_service import process_pending_songs
+
+        maker = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with maker() as session:
+            session.add_all(
+                [
+                    Song(name="good.wav", file_path="/fake/good.wav"),
+                    Song(name="bad.wav", file_path="/fake/bad.wav"),
+                ]
+            )
+            await session.commit()
+
+        fake_audio = np.sin(np.linspace(0, 2 * np.pi * 440 * 2, 44100))
+
+        def fake_load(path):
+            if path.endswith("bad.wav"):
+                raise RuntimeError("decode failed")
+            return fake_audio, 22050
+
+        with patch("core.song_service.load_audio", side_effect=fake_load):
+            async with maker() as session:
+                completed, failed = await process_pending_songs(session)
+
+        assert (completed, failed) == (1, 1)
+
+        async with maker() as session:
+            result = await session.execute(
+                select(Song).order_by(Song.id)
+            )
+            songs = result.scalars().all()
+            assert songs[0].status == ProcessingStatus.completed
+            assert songs[1].status == ProcessingStatus.pending

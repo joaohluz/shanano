@@ -14,6 +14,7 @@ IA_DETAILS_URL = "https://archive.org/details"
 
 # Audio file extensions to pull from IA items, in preference order
 # (lossless FLAC/OGG first, M4A/MP3 as fallback per Iteration 4 spec).
+# Per track, the best-format member is kept; bitrate transcodes are collapsed.
 CATALOG_AUDIO_EXTENSIONS = (".flac", ".ogg", ".m4a", ".mp3")
 
 # Audio formats accepted by the upload/match endpoints (librosa decodes these).

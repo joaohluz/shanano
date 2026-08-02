@@ -24,10 +24,12 @@ Learning project: turning a minimal Shazam clone into a distributed, observable,
 - `api/routes/songs.py` — song CRUD + WAV upload endpoint
 - `api/routes/match.py` — match endpoint (public, no auth; WAV query decoded from in-memory BytesIO per ADR-0001)
 - `api/routes/auth.py` — planned: register (admin-only), login, /me (Iteration 4)
-- `core/catalog_service.py` — planned: Internet Archive catalog fetch + metadata extraction (Iteration 4)
+- `core/catalog_service.py` — Internet Archive catalog ingestion: search a collection (`fetch_catalog_batch`) or ingest a hand-picked list of links (`ingest_links`); a multi-track item becomes one song per track, deduped per-track by download URL
 - `core/match_service.py` — planned: async fingerprint matching ported from `controllers/match_service.py` (Iteration 4)
 - `core/security.py` — planned: bcrypt hashing + JWT create/verify (Iteration 4)
 - `catalog_fetch.py` — planned: CLI entrypoint for one IA fetch batch (Iteration 4)
+- `seed.py` — seed pipeline CLI: `ingest` (links file → pending songs), `process` (one-shot fingerprinting), `dump` (songs+fingerprints+audio → compressed tar.gz), `restore`, `build` (all four)
+- `core/seed_service.py` — portable, engine-agnostic catalog dump/load (`dump_seed` / `load_seed`); the seed is the offline demo data source
 - `webapp/` — static mic-only SPA (record ~5–15 s → match anonymously), no build step; served by FastAPI via `StaticFiles` (spec: `docs/webapp.md`)
 - `core/models.py` — SQLAlchemy models (Song with status tracking, Fingerprint)
 - `core/schemas.py` — Pydantic schemas for request/response
@@ -161,7 +163,7 @@ Goals: populate the catalog automatically from a safe open-source source, secure
 #### Phases
 
 1. **Metadata model** — migration adding to `songs`: `artist`, `album`, `year`, `genre`, `cover_art_url`, `source`, `source_url`. Update `core/schemas.py` (SongOut/SongListOut/MatchResultOut gain metadata) + new `User`-related schemas.
-2. **IA catalog job** — `core/catalog_service.py`: query `https://archive.org/advancedsearch.php` (configurable collection), fetch `https://archive.org/metadata/{identifier}` (extract creator/title/date/subject, cover art via `https://archive.org/services/img/{identifier}`), download audio from `https://archive.org/download/{identifier}/{file}` to `UPLOAD_DIR`, insert `Song(status=pending, ..., source="internet_archive")`, dedupe by `source_url`. `catalog_fetch.py` = CLI for one batch (`CATALOG_MAX_ITEMS`, default 5). Unit tests with mocked httpx.
+2. **IA catalog job** — `core/catalog_service.py`: query `https://archive.org/advancedsearch.php` (configurable collection), fetch `https://archive.org/metadata/{identifier}` (extract creator/title/date/subject, cover art via `https://archive.org/services/img/{identifier}`), download audio from `https://archive.org/download/{identifier}/{file}` to `UPLOAD_DIR`, insert `Song(status=pending, ..., source="internet_archive")`, dedupe per-track by download URL. A multi-track item (album) becomes one pending song per distinct track (formats/bitrate-transcodes of the same track collapse to the best format); a single-track item stays one song. `catalog_fetch.py` = CLI for one batch (`CATALOG_MAX_ITEMS`, default 5). Unit tests with mocked httpx.
 3. **Auth** — deps `PyJWT` + `bcrypt`; `core/security.py` (hash/verify + token create/decode); `User` model + migration (`id`, `username` unique, `hashed_password`, `role`, `created_at`); `api/routes/auth.py`: `POST /auth/register` (admin-only), `POST /auth/login` (OAuth2PasswordRequestForm → JWT), `GET /auth/me`; `api/deps.py`: `get_current_user`, `require_admin` (OAuth2PasswordBearer).
 4. **Real matching** — port `controllers/match_service.py` (SQLite) to async SQLAlchemy in `core/match_service.py`: hash lookup → offset voting → best candidate → full Song. `POST /match/` runs `load_audio → pipeline.run → match`, returns `MatchResultOut` with all metadata.
 5. **Webapp** — `webapp/` static mic-only SPA (no build step): record from the mic → encode WAV in the browser → `POST /match/` anonymously → result card with cover art + full metadata. Mounted via FastAPI `StaticFiles`. Spec: `docs/webapp.md`.
@@ -199,9 +201,10 @@ shanano/
 │   ├── models.py            # SQLAlchemy models + ProcessingStatus enum
 │   ├── schemas.py           # Pydantic schemas
 │   ├── song_service.py      # Async song fingerprinting
-│   ├── catalog_service.py   # Iteration 4: IA catalog fetch + metadata
-│   ├── match_service.py     # Iteration 4: async fingerprint matching
-│   └── security.py          # Iteration 4: bcrypt + JWT
+│   ├── catalog_service.py   # IA catalog fetch (search + links) + metadata
+│   ├── seed_service.py      # Portable catalog dump/load (the offline demo seed)
+│   ├── match_service.py     # Async fingerprint matching
+│   └── security.py          # bcrypt + JWT
 ├── infra/
 │   ├── __init__.py
 │   ├── Dockerfile           # Multi-stage python:3.12-slim (adds ffmpeg in Iteration 4)
@@ -243,18 +246,23 @@ shanano/
 │   │   ├── test_config.py
 │   │   ├── test_schemas.py
 │   │   ├── test_audio_pipeline.py
-│   │   └── test_loadgen.py
+│   │   ├── test_catalog_service.py
+│   │   ├── test_loadgen.py
+│   │   ├── test_match_service.py
+│   │   └── test_seed_service.py
 │   └── integration/
 │       ├── __init__.py
 │       ├── test_songs_api.py
 │       ├── test_match_api.py
 │       ├── test_webapp.py
 │       ├── test_song_service.py
-│       └── test_worker.py
+│       ├── test_worker.py
+│       └── test_auth.py
 ├── audio_processing/        # DSP modules (existing)
 ├── controllers/             # SQLite controllers (existing)
-├── data/                    # Sample audio
+├── data/                    # Sample audio + data/seed/ (links file + built seeds)
 ├── worker.py                # Background fingerprinting worker + /metrics on :8001
+├── seed.py                  # Seed pipeline CLI (ingest -> process -> dump -> compress)
 ├── loadgen.py               # Fake user traffic generator (sine-wave RPS, synthetic uploads)
 ├── audio_pipeline.py        # AudioFingerprintPipeline class
 ├── cli.py                   # Original Typer CLI

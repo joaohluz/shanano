@@ -14,8 +14,11 @@ from core.catalog_service import (
     build_download_url,
     extract_metadata,
     fetch_catalog_batch,
+    ingest_links,
+    parse_ia_link,
     search_catalog,
     select_audio_file,
+    select_tracks,
 )
 from core.models import ProcessingStatus, Song
 
@@ -136,6 +139,57 @@ class TestSelectAudioFile:
         assert select_audio_file([]) is None
 
 
+class TestSelectTracks:
+    def test_returns_one_track_per_distinct_audio_file(self):
+        files = [
+            {"name": "01 Help!.mp3"},
+            {"name": "02 The Night Before.mp3"},
+            {"name": "03 You've got to Hide Your Love Away.mp3"},
+        ]
+        assert select_tracks(files) == [
+            "01 Help!.mp3",
+            "02 The Night Before.mp3",
+            "03 You've got to Hide Your Love Away.mp3",
+        ]
+
+    def test_collapses_same_track_in_multiple_formats(self):
+        files = [
+            {"name": "track.flac"},
+            {"name": "track.mp3"},
+            {"name": "track.ogg"},
+        ]
+        assert select_tracks(files) == ["track.flac"]
+
+    def test_prefers_lossless_over_bitrate_transcodes(self):
+        files = [
+            {"name": "track_128kb.mp3"},
+            {"name": "track.mp3"},
+            {"name": "track.flac"},
+        ]
+        assert select_tracks(files) == ["track.flac"]
+
+    def test_prefers_base_mp3_over_bitrate_transcode(self):
+        files = [
+            {"name": "track_64kb.mp3"},
+            {"name": "track_128kb.mp3"},
+            {"name": "track.mp3"},
+        ]
+        assert select_tracks(files) == ["track.mp3"]
+
+    def test_ignores_non_audio_files(self):
+        files = [{"name": "cover.jpg"}, {"name": "notes.txt"}]
+        assert select_tracks(files) == []
+
+    def test_keeps_distinct_tracks_even_after_transcode_dedupe(self):
+        files = [
+            {"name": "01 Help!.mp3"},
+            {"name": "01 Help!_64kb.mp3"},
+            {"name": "02 The Night Before.mp3"},
+            {"name": "02 The Night Before_128kb.mp3"},
+        ]
+        assert select_tracks(files) == ["01 Help!.mp3", "02 The Night Before.mp3"]
+
+
 class TestExtractMetadata:
     def test_extracts_all_fields(self):
         metadata = extract_metadata(sample_metadata(), identifier="gd1990")
@@ -178,6 +232,125 @@ class TestURLBuilders:
         assert url == "https://archive.org/download/abc/my%20file.flac"
 
 
+class TestParseIALink:
+    def test_details_url(self):
+        assert (
+            parse_ia_link("https://archive.org/details/gd1990-07-08")
+            == "gd1990-07-08"
+        )
+
+    def test_metadata_url(self):
+        assert (
+            parse_ia_link("https://archive.org/metadata/gd1990-07-08")
+            == "gd1990-07-08"
+        )
+
+    def test_download_url(self):
+        assert (
+            parse_ia_link("https://archive.org/download/gd1990-07-08/track.flac")
+            == "gd1990-07-08"
+        )
+
+    def test_bare_identifier(self):
+        assert parse_ia_link("gd1990-07-08") == "gd1990-07-08"
+
+    def test_strips_query_and_fragment(self):
+        assert (
+            parse_ia_link("https://archive.org/details/gd1990?page=1#section")
+            == "gd1990"
+        )
+
+    def test_strips_whitespace(self):
+        assert parse_ia_link("  gd1990  ") == "gd1990"
+
+    def test_rejects_empty(self):
+        assert parse_ia_link("") is None
+        assert parse_ia_link("   ") is None
+
+    def test_rejects_unrelated_url(self):
+        assert parse_ia_link("https://example.com/details/foo") is None
+
+
+class TestIngestLinks:
+    async def test_ingests_from_links_list(self, db_session, tmp_path):
+        client = make_mock_client(
+            identifiers=["gd1990", "gd1991"],
+            metadata_by_id={"gd1990": sample_metadata("gd1990"), "gd1991": sample_metadata("gd1991")},
+        )
+        ingested = await ingest_links(
+            db_session,
+            [
+                "https://archive.org/details/gd1990",
+                "https://archive.org/download/gd1991/track.flac",
+            ],
+            client=client,
+            upload_dir=str(tmp_path),
+        )
+        assert ingested == 2
+        result = await db_session.execute(select(Song).order_by(Song.id))
+        songs = result.scalars().all()
+        assert [s.source_url for s in songs] == [
+            "https://archive.org/download/gd1990/gd1990-07-08d1t01.flac",
+            "https://archive.org/download/gd1991/gd1990-07-08d1t01.flac",
+        ]
+
+    async def test_drops_duplicate_links(self, db_session, tmp_path):
+        client = make_mock_client(
+            identifiers=["gd1990"],
+            metadata_by_id={"gd1990": sample_metadata("gd1990")},
+        )
+        ingested = await ingest_links(
+            db_session,
+            [
+                "https://archive.org/details/gd1990",
+                "gd1990",
+                "https://archive.org/metadata/gd1990",
+            ],
+            client=client,
+            upload_dir=str(tmp_path),
+        )
+        assert ingested == 1
+        result = await db_session.execute(select(Song))
+        assert len(result.scalars().all()) == 1
+
+    async def test_skips_unparseable_links(self, db_session, tmp_path):
+        client = make_mock_client(
+            identifiers=["gd1990"],
+            metadata_by_id={"gd1990": sample_metadata("gd1990")},
+        )
+        ingested = await ingest_links(
+            db_session,
+            ["not-a-link", "", "https://example.com/details/x"],
+            client=client,
+            upload_dir=str(tmp_path),
+        )
+        assert ingested == 0
+
+    async def test_continues_when_an_item_fails(self, db_session, tmp_path):
+        def handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if url.startswith("https://archive.org/metadata/gd1990"):
+                return httpx.Response(500, text="boom")
+            if url.startswith("https://archive.org/metadata/gd1991"):
+                return httpx.Response(200, json=sample_metadata("gd1991"))
+            if url.startswith("https://archive.org/download/"):
+                return httpx.Response(200, content=b"bytes")
+            return httpx.Response(404)
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        ingested = await ingest_links(
+            db_session,
+            ["https://archive.org/details/gd1990", "https://archive.org/details/gd1991"],
+            client=client,
+            upload_dir=str(tmp_path),
+        )
+        assert ingested == 1
+        result = await db_session.execute(
+            select(Song).where(Song.source_url == "https://archive.org/download/gd1991/gd1990-07-08d1t01.flac")
+        )
+        assert result.scalar_one() is not None
+
+
 class TestFetchCatalogBatch:
     async def test_inserts_pending_song_with_metadata(self, db_session, tmp_path):
         client = make_mock_client(
@@ -199,7 +372,7 @@ class TestFetchCatalogBatch:
         song = result.scalar_one()
         assert song.status == ProcessingStatus.pending
         assert song.source == SOURCE_NAME
-        assert song.source_url == "https://archive.org/details/gd1990"
+        assert song.source_url == "https://archive.org/download/gd1990/gd1990-07-08d1t01.flac"
         assert song.artist == "Grateful Dead"
         assert song.album == "Live at RFK Stadium"
         assert song.year == 1990
@@ -267,9 +440,57 @@ class TestFetchCatalogBatch:
         )
         assert ingested == 1
         result = await db_session.execute(
-            select(Song).where(Song.source_url == "https://archive.org/details/good")
+            select(Song).where(Song.source_url == "https://archive.org/download/good/gd1990-07-08d1t01.flac")
         )
         assert result.scalar_one() is not None
+
+    async def test_ingests_multiple_tracks_of_an_album(self, db_session, tmp_path):
+        """A multi-track item becomes one pending song per distinct track."""
+        album = sample_metadata("beatles")
+        album["files"] = [
+            {"name": "01 Help!.mp3"},
+            {"name": "01 Help!_64kb.mp3"},  # transcode of the same track
+            {"name": "02 The Night Before.mp3"},
+        ]
+        client = make_mock_client(
+            identifiers=["beatles"], metadata_by_id={"beatles": album}
+        )
+        ingested = await fetch_catalog_batch(
+            db_session, max_items=1, client=client, upload_dir=str(tmp_path)
+        )
+        assert ingested == 2
+
+        result = await db_session.execute(select(Song).order_by(Song.id))
+        songs = result.scalars().all()
+        assert [s.name for s in songs] == ["01 Help!", "02 The Night Before"]
+        assert [s.source_url for s in songs] == [
+            "https://archive.org/download/beatles/01%20Help%21.mp3",
+            "https://archive.org/download/beatles/02%20The%20Night%20Before.mp3",
+        ]
+        assert all(s.status == ProcessingStatus.pending for s in songs)
+        assert all(s.artist == "Grateful Dead" for s in songs)
+        assert (tmp_path / "01 Help!.mp3").read_bytes() == b"fake-flac-bytes"
+        assert (tmp_path / "02 The Night Before.mp3").read_bytes() == b"fake-flac-bytes"
+
+    async def test_dedupes_per_track(self, db_session, tmp_path):
+        album = sample_metadata("beatles")
+        album["files"] = [
+            {"name": "01 Help!.mp3"},
+            {"name": "02 The Night Before.mp3"},
+        ]
+        client = make_mock_client(
+            identifiers=["beatles"], metadata_by_id={"beatles": album}
+        )
+        first = await fetch_catalog_batch(
+            db_session, max_items=1, client=client, upload_dir=str(tmp_path)
+        )
+        second = await fetch_catalog_batch(
+            db_session, max_items=1, client=client, upload_dir=str(tmp_path)
+        )
+        assert first == 2
+        assert second == 0
+        result = await db_session.execute(select(Song))
+        assert len(result.scalars().all()) == 2
 
     async def test_default_client_follows_download_redirects(
         self, db_session, tmp_path, monkeypatch

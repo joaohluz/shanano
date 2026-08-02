@@ -89,13 +89,18 @@ async def run_worker():
                             duration_seconds=round(proc_dur, 3),
                         )
                     except Exception as exc:
+                        # Snapshot before rollback: it expires the ORM objects,
+                        # so reading attributes afterwards would lazy-reload.
+                        song_id = song.id
+                        song_name = song.name
                         await db.rollback()
                         proc_dur = time.monotonic() - proc_start
                         processing_duration.observe(proc_dur)
                         songs_processed.labels(status="failed").inc()
                         logger.error(
                             "song failed",
-                            song_id=song.id,
+                            song_id=song_id,
+                            name=song_name,
                             error=str(exc),
                             duration_seconds=round(proc_dur, 3),
                         )

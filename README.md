@@ -137,6 +137,34 @@ confidence, and a link to the source. Silence or unknown audio shows "No match
 found"; denying the mic shows a permission message. See `docs/webapp.md` for the
 full spec.
 
+### Seed Pipeline (offline demo catalog)
+
+The catalog is populated from a curated list of Internet Archive links rather
+than a live collection search, fingerprinted in one shot, and snapshotted into
+a **compressed, portable seed** — songs + fingerprints + the source audio in a
+single `.tar.gz`. Restoring that seed makes the demo work fully offline (no
+Archive.org access needed): matching still works and `make clip` can cut query
+clips from the bundled audio.
+
+```bash
+# 1. List the links you want (one IA link/identifier per line) in data/seed/links.txt
+# 2. Build the seed: ingest links -> fingerprint -> dump+compress
+make seed                # or: python seed.py build --links data/seed/links.txt
+
+# 3. On a fresh demo DB, restore the seed (songs + fingerprints + audio)
+make setup && make api   # terminal 1 (fresh schema + users)
+make seed-restore        # terminal 2
+make clip && make match  # fully offline match
+```
+
+Individual stages: `python seed.py ingest --links <file>`,
+`python seed.py process`, `python seed.py dump [--out <path>]`,
+`python seed.py restore --file <seed>.tar.gz` (Makefile: `seed-ingest`,
+`seed-process`, `seed-dump`, `seed-restore`). The dump is engine-agnostic
+JSON, so a seed built on Postgres restores into the SQLite demo DB and vice
+versa. Business logic lives in `core/seed_service.py` (dump/load) and
+`core/catalog_service.py:ingest_links` (link ingestion).
+
 ### Running Tests
 
 Tests use SQLite+aiosqlite (no Docker needed):
@@ -208,7 +236,8 @@ shanano/
 │   ├── metrics.py          # Prometheus custom metrics (counters, histograms, gauges)
 │   ├── models.py           # SQLAlchemy models (Song, Fingerprint, ProcessingStatus)
 │   ├── schemas.py          # Pydantic request/response schemas
-│   └── song_service.py     # Async song processing (load audio, pipeline, persist)
+│   ├── song_service.py     # Async song processing (load audio, pipeline, persist)
+│   └── seed_service.py     # Portable compressed catalog dump/load (demo seed)
 ├── infra/                  # Containerization
 │   ├── Dockerfile          # Multi-stage build (python:3.12-slim + librosa deps)
 │   └── docker-compose.yml  # 7 services: API, Worker, PostgreSQL, pgAdmin, Prometheus, Grafana, loadgen
@@ -233,6 +262,7 @@ shanano/
 │       ├── datasources/    # Auto-provisioned Prometheus datasource
 │       └── dashboards/     # Pre-built dashboard with 6 panels
 ├── worker.py               # Background worker: polls for pending songs, fingerprints them
+├── seed.py                 # Seed pipeline CLI (ingest links -> process -> dump+compress)
 ├── loadgen.py              # Fake user traffic generator (sine-wave RPS, synthetic uploads)
 ├── audio_processing/       # Original DSP modules (spectrogram, peaks, filters)
 │   ├── audio.py            # load_audio, record_audio (lazy sounddevice import)

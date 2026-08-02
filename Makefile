@@ -10,12 +10,17 @@ BASE      := http://localhost:8000
 COLLECTION := librivoxaudio
 MAX_ITEMS := 1
 
+SEED_DIR   := data/seed
+SEED_LINKS := $(SEED_DIR)/links.txt
+SEED_OUT   := $(SEED_DIR)/shanano_seed.tar.gz
+
 export DATABASE_URL
 export JWT_SECRET
 
 .PHONY: help setup api worker catalog dedupe songs status \
         auth upload clip noise match negative cover \
-        songs-catalog match-catalog clean
+        songs-catalog match-catalog clean \
+        seed seed-ingest seed-process seed-dump seed-restore
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -119,6 +124,23 @@ upload: ## Upload data/assets/clean_wavs/*.wav as a song (authed)
 	  | $(PYTHON) -c "import sys,json;print(json.load(sys.stdin)['access_token'])") ; \
 	curl -s -X POST $(BASE)/songs/ -H "Authorization: Bearer $$TOKEN" \
 	  -F "file=@data/assets/clean_wavs/music-hd-0001.wav" | $(PYTHON) -m json.tool
+
+# --- seed pipeline (portable offline demo seed) ---
+
+seed: ## BUILD THE FULL SEED: ingest links -> process -> dump+compress
+	$(PYTHON) seed.py build --links $(SEED_LINKS) --out $(SEED_OUT)
+
+seed-ingest: ## Download + insert pending songs from data/seed/links.txt
+	$(PYTHON) seed.py ingest --links $(SEED_LINKS)
+
+seed-process: ## Fingerprint every pending song (one-shot, no worker needed)
+	$(PYTHON) seed.py process
+
+seed-dump: ## Export songs+fingerprints+audio to data/seed/shanano_seed.tar.gz
+	$(PYTHON) seed.py dump --out $(SEED_OUT)
+
+seed-restore: ## Load data/seed/shanano_seed.tar.gz into the demo DB + audio
+	$(PYTHON) seed.py restore --file $(SEED_OUT)
 
 # --- misc ---
 

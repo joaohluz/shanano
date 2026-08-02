@@ -62,3 +62,37 @@ async def process_song(song_id: int, db: AsyncSession) -> None:
         song.status = ProcessingStatus.failed
         logger.error("fingerprinting failed", song_id=song.id)
         raise
+
+
+async def process_pending_songs(db: AsyncSession) -> tuple[int, int]:
+    """One-shot: fingerprint every pending song. Returns (completed, failed).
+
+    Used by the seed pipeline (``seed.py process``) so the catalog can be
+    processed in a single run instead of leaving a long-lived worker polling.
+    """
+    result = await db.execute(
+        select(Song)
+        .where(Song.status == ProcessingStatus.pending)
+        .order_by(Song.id)
+    )
+    pending = list(result.scalars().all())
+    completed = failed = 0
+    for song in pending:
+        # Snapshot before processing: rollback() expires the ORM objects, so
+        # accessing attributes afterwards would trigger a lazy reload.
+        song_id = song.id
+        song_name = song.name
+        try:
+            await process_song(song_id, db)
+            await db.commit()
+            completed += 1
+        except Exception as exc:
+            await db.rollback()
+            failed += 1
+            logger.error(
+                "song failed",
+                song_id=song_id,
+                name=song_name,
+                error=str(exc),
+            )
+    return completed, failed
