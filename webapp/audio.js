@@ -71,8 +71,15 @@ export async function startRecording({ durationSeconds, onTick }) {
     try {
       const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
       const arrayBuffer = await blob.arrayBuffer();
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === "suspended") await audioCtx.resume();
+      // Decode with an OfflineAudioContext. A normal AudioContext created
+      // inside onstop (after the button-click gesture has expired) starts in
+      // "suspended" state under the autoplay policy, and resume() there never
+      // resolves — leaving the UI stuck on "Finishing…". OfflineAudioContext
+      // has no audio output and no autoplay policy, so decodeAudioData always
+      // settles.
+      const OfflineCtx =
+        window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      const audioCtx = new OfflineCtx(1, 1, 22050);
       const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
       const mono = new Float32Array(audioBuffer.length);
       for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
