@@ -1,2 +1,10 @@
 __pycache__
 .DS_Store
+.venv/
+*.db
+.pytest_cache/
+coverage.xml
+htmlcov/
+.coverage
+data/uploads/
+data/seed/*.tar.gz

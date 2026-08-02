@@ -1,0 +1,93 @@
+import aiofiles
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from api.deps import get_current_user, get_db, require_admin
+from config import SUPPORTED_AUDIO_EXTENSIONS, UPLOAD_DIR
+from core.metrics import songs_uploaded
+from core.models import Fingerprint, Song, User
+from core.schemas import SongOut, SongListOut
+
+router = APIRouter()
+
+
+@router.get("/", response_model=list[SongListOut])
+async def list_songs(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(
+            Song.id,
+            Song.name,
+            Song.status,
+            Song.artist,
+            Song.album,
+            Song.year,
+            Song.genre,
+            Song.cover_art_url,
+            Song.source,
+            Song.source_url,
+            func.count(Fingerprint.hash).label("fingerprint_count"),
+        )
+        .outerjoin(Fingerprint, Song.id == Fingerprint.song_id)
+        .group_by(Song.id)
+    )
+    rows = result.all()
+    return [
+        SongListOut(
+            id=row.id, name=row.name, status=row.status,
+            artist=row.artist, album=row.album, year=row.year,
+            genre=row.genre, cover_art_url=row.cover_art_url,
+            source=row.source, source_url=row.source_url,
+            fingerprint_count=row.fingerprint_count,
+        )
+        for row in rows
+    ]
+
+
+@router.get("/{song_id}", response_model=SongOut)
+async def get_song(song_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Song).where(Song.id == song_id))
+    song = result.scalar_one_or_none()
+    if not song:
+        raise HTTPException(status_code=404, detail="Song not found")
+    return song
+
+
+@router.post("/", response_model=SongOut, status_code=201)
+async def add_song(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    if not file.filename or Path(file.filename).suffix.lower() not in SUPPORTED_AUDIO_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Unsupported audio format")
+
+    upload_dir = Path(UPLOAD_DIR)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    file_path = upload_dir / file.filename
+
+    async with aiofiles.open(file_path, "wb") as f:
+        content = await file.read()
+        await f.write(content)
+
+    song = Song(name=file.filename, file_path=str(file_path))
+    db.add(song)
+    await db.flush()
+    songs_uploaded.inc()
+
+    return SongOut(id=song.id, name=song.name, status=song.status)
+
+
+@router.delete("/{song_id}", status_code=204)
+async def delete_song(
+    song_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    result = await db.execute(select(Song).where(Song.id == song_id))
+    song = result.scalar_one_or_none()
+    if not song:
+        raise HTTPException(status_code=404, detail="Song not found")
+    await db.delete(song)

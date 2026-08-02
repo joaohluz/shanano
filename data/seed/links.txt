@@ -1,0 +1,17 @@
+# Shanano demo seed — source links (one Internet Archive link or identifier per line).
+#
+# Accepted forms:
+#   https://archive.org/details/<id>
+#   https://archive.org/metadata/<id>
+#   https://archive.org/download/<id>/<file>
+#   <id>
+#
+# Blank lines and lines starting with "#" are ignored. `make seed` runs the
+# full pipeline: ingest -> process -> dump+compress to data/seed/*.tar.gz.
+#
+# Example (public-domain Librivox audiobook chapters):
+# https://archive.org/details/roverboysinsouthernwaters_01_winfield
+# https://archive.org/details/vicarsdaughter_01_macdonald
+
+# The Beatles — Help! (Mono): a 14-track album; each track becomes its own song.
+https://archive.org/download/beatlesalbums_202509

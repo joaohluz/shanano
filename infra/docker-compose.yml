@@ -1,0 +1,106 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: shanano
+      POSTGRES_PASSWORD: shanano
+      POSTGRES_DB: shanano
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shanano"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://shanano:shanano@db:5432/shanano
+      UPLOAD_DIR: /app/data/uploads
+      JWT_SECRET: dev-secret-change-me
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin
+      LOADGEN_USERNAME: loadgen
+      LOADGEN_PASSWORD: loadgen
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    entrypoint: ["python", "worker.py"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://shanano:shanano@db:5432/shanano
+      UPLOAD_DIR: /app/data/uploads
+    ports:
+      - "8001:8001"
+    volumes:
+      - uploads:/app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@shanano.dev
+      PGADMIN_DEFAULT_PASSWORD: shanano
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+
+  loadgen:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    entrypoint: ["python", "loadgen.py"]
+    environment:
+      LOADGEN_TARGET: http://api:8000
+      LOADGEN_WORKERS: "8"
+      LOADGEN_MIN_RPS: "1"
+      LOADGEN_MAX_RPS: "20"
+      LOADGEN_WAVE_PERIOD: "120"
+      LOADGEN_USERNAME: loadgen
+      LOADGEN_PASSWORD: loadgen
+    depends_on:
+      api:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+      - worker
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: shanano
+    volumes:
+      - ../observability/grafana/datasources:/etc/grafana/provisioning/datasources
+      - ../observability/grafana/dashboards:/etc/grafana/provisioning/dashboards
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:
+  uploads:

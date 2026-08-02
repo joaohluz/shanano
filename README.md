@@ -1,112 +1,136 @@
-# Shanano: Audio Fingerprinting Song Matcher
+# Shanano — Scalable Audio Fingerprinting
 
-Shanano is an exploratory project aimed at learning and implementing audio fingerprinting techniques for efficiently matching songs in a database. Inspired by Shazam's algorithm, this project demonstrates how to extract unique fingerprints from audio files and use them to identify songs from short recordings.
+Shanano is a **learning project**: a minimal Shazam clone that gets progressively
+turned into a distributed, observable, production-ish system. Each iteration
+exists to explore a different engineering topic — with real code, not just
+notes.
 
-## How It Works
+![Screenshot of UI](/docs/README.png)
 
-The system processes audio through several steps:
+## Topics explored
 
-1. **Audio Loading**: Load WAV files and normalize them
-2. **Spectrogram Generation**: Convert audio to time-frequency representation using STFT
-3. **Peak Detection**: Find prominent spectral peaks above a threshold
-4. **Fingerprint Generation**: Create unique hashes from peak pairs within time windows
-5. **Database Storage**: Store fingerprints with song metadata
-6. **Matching**: Compare query fingerprints against database to find matches
+| Iteration | Topic | What was built |
+|---|---|---|
+| 1 | Async Python API + containers | FastAPI REST API, async SQLAlchemy + PostgreSQL, Alembic migrations, a background fingerprinting worker |
+| 2 | Observability | Prometheus metrics (`/metrics` on API + worker), a Grafana dashboard, structured JSON logging (structlog) |
+| 3 | Orchestration + fake traffic | Plain Kubernetes manifests for the whole stack (kind), and `loadgen`, a fake-traffic generator with sine-wave request rate |
+| 4 | Full-stack product | Internet Archive catalog ingestion, JWT auth + roles, real audio matching, a mic-only web app, and a portable offline seed |
+| 5 (next) | Event-driven | Async fingerprint processing on Kafka |
 
-## Installation
+## High-level architecture
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/joaohluz/shanano.git
-   cd shanano
-   ```
+Audio is **fingerprinted once** — by the worker — and stored as hash/offset rows
+in PostgreSQL. A **query** (a mic recording from the webapp, or an uploaded
+clip) is fingerprinted the same way, then matched by hash lookup + offset
+voting. Catalog songs come from the Internet Archive via `catalog_fetch.py`, or
+from the bundled offline seed (`make seed`).
 
-2. Create a virtual environment:
-   ```bash
-   python -m venv shanano_venv
-   source shanano_venv/bin/activate  # On Windows: shanano_venv\Scripts\activate
-   ```
+```mermaid
+graph TB
+    WEB["Webapp<br/>browser mic -> WAV query"]
+    CLI[curl / scripts]
+    LOADGEN[loadgen.py<br/>fake traffic]
 
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+    CAT[catalog_fetch.py<br/>IA ingestion CLI]
+    IA[(Internet Archive)]
 
-## Usage
+    API[FastAPI :8000<br/>auth / songs / match / metrics]
+    WORKER[Worker :8001<br/>poll + fingerprint + /metrics]
+    PIPE[AudioFingerprintPipeline<br/>normalize, spectrogram, peaks, hashes]
 
-### Command Line Interface
+    PG[(PostgreSQL<br/>songs / fingerprints / users)]
+    VOL[(uploads volume<br/>shared by API + worker)]
+    PROM[Prometheus]
+    GRAF[Grafana]
 
-The project provides a CLI with several commands:
+    WEB -->|"POST /match/ (public)"| API
+    CLI -->|auth / upload / match| API
+    LOADGEN -->|sine-wave traffic| API
 
-- **List songs**: `python -m cli list`
-- **Add songs**: `python -m cli add <path>` (path to WAV file or directory)
-- **Match audio**: `python -m cli match --seconds [seconds]` (records and matches, default 7 seconds)
-- **Live view**: `python -m cli live` (shows real-time audio waveform)
+    CAT -->|search / metadata / audio| IA
+    CAT -->|insert pending songs| PG
+    CAT -->|save audio| VOL
 
-### Example Workflow
+    API -->|save uploads + serve webapp| VOL
+    API -->|CRUD + auth| PG
+    API -->|fingerprint queries| PIPE
 
-1. Add some songs to the database:
-   ```bash
-   python -m cli add data/assets/clean_wavs/
-   ```
+    WORKER -->|poll pending every 5s| PG
+    WORKER -->|read audio| VOL
+    WORKER -->|fingerprint + persist| PIPE
+    WORKER -->|fingerprints + status| PG
 
-2. List the songs:
-   ```bash
-   python -m cli list
-   ```
+    API -->|scrape :8000/metrics| PROM
+    WORKER -->|scrape :8001/metrics| PROM
+    PROM -->|datasource| GRAF
+```
 
-3. Play a song and match it:
-   ```bash
-   python -m cli match
-   ```
+The API has auth-protected song endpoints plus a **public** `POST /match/` so the
+mic-only webapp matches anonymously. Prometheus scrapes `/metrics` from the API
+and the worker; Grafana renders the dashboard. Component and feature
+explanations live in [`docs/`](docs/README.md).
 
-## Notebooks
+## Run the demo (make commands)
 
-The project includes several Jupyter notebooks that provide detailed explanations and visualizations:
+`make` targets wrap the whole demo — no Docker or Postgres needed. It uses a
+throwaway local SQLite DB and hits the **real** Internet Archive for the catalog
+step. `make help` lists every target.
 
-- **[audio_fingerprinting_pipeline.ipynb](audio_fingerprinting_pipeline.ipynb)**: Step-by-step explanation of the audio fingerprinting algorithm, including loading audio, computing spectrograms, detecting peaks, generating fingerprints, and matching against the database.
+### Full flow (2 terminals)
 
-- **[Input_Audio_Pipeline.ipynb](Input_Audio_Pipeline.ipynb)**: Detailed walkthrough of the microphone audio processing pipeline, showing how recorded audio is processed through normalization, filtering, peak detection, and fingerprint generation.
+```bash
+# Terminal 1 — reset the demo DB, then start the API and the worker
+make setup       # wipe the throwaway demo DB
+make api         # start the API on :8000 (creates schema + seeds admin/loadgen)
+make worker      # fingerprint pending songs as they arrive
 
-- **[Input_Processing_Experiments.ipynb](Input_Processing_Experiments.ipynb)**: Experimental explorations of different audio processing techniques, parameter tuning, and performance analysis.
+# Terminal 2 — populate the catalog, then match against it
+make catalog     # fetch 1 Internet Archive item (librivoxaudio, small download)
+make status      # watch the song flip pending -> processing -> completed
+make clip        # cut a 15s WAV clip from the downloaded song
+make match       # match the clip (public endpoint) -> full metadata result
+```
 
-- **[perfect_match_histograms.ipynb](perfect_match_histograms.ipynb)**: Analysis of ideal matching scenarios with perfect audio alignment, demonstrating the effectiveness of the fingerprinting system.
+### Cheat sheet
 
-These notebooks serve as educational resources and provide visual insights into each step of the audio fingerprinting process.
+| Target | What it does |
+|---|---|
+| `make help` | list all targets |
+| `make setup` / `make clean` | reset / remove the demo DB + temp files |
+| `make api` / `make worker` | start the API on :8000 / the fingerprinting worker |
+| `make catalog` / `make dedupe` | fetch one IA batch / re-run to show "already ingested, skipping" |
+| `make songs` / `make status` | list songs with metadata / just id + status + fingerprint count |
+| `make auth` | run the 8 auth checks (login, roles, route protection) |
+| `make upload` | upload a sample WAV as a song (authed) |
+| `make clip` / `make match` / `make negative` | cut a query clip / match it / noise + error cases |
+| `make seed` | build the offline seed (ingest links → fingerprint → tar.gz) |
+| `make seed-restore` | load the seed into a fresh DB (fully offline demo) |
 
-## Project Structure
+See [`demo.md`](demo.md) for the full copy-paste walkthrough.
 
-- `audio_processing/`: Audio loading, spectrogram, and stream processing
-- `controllers/`: Database operations, fingerprinting, and matching logic
-- `tests/`: Unit tests
-- `audio_pipeline.py`: Main fingerprinting pipeline
-- `cli.py`: Command-line interface
-- `*.ipynb`: Jupyter notebooks with detailed explanations and experiments
+## Also in this repo
 
-## Learning Objectives
+- **Webapp** — record ~5–15 s from the browser mic and match anonymously. With
+  the API running, open `http://localhost:8000` (spec: `docs/webapp.md`).
+- **Docker Compose** — full stack with Postgres, Prometheus, Grafana, pgAdmin
+  and loadgen: `docker compose -f infra/docker-compose.yml up -d`.
+- **Kubernetes** — plain manifests to run the whole stack on a local kind
+  cluster (`k8s/README.md`).
+- **Tests** — `pip install -r requirements-dev.txt` then `pytest` (SQLite, no
+  Docker needed).
 
-This project explores:
-- Digital signal processing concepts
-- Audio feature extraction
-- Database indexing for fast lookups
-- Real-time audio processing
+## Services (Docker Compose)
 
-## Dependencies
-
-The project uses minimal dependencies focused on audio processing and terminal interfaces. See `requirements.txt` for the complete list.
+| Service | URL | Credentials |
+|---|---|---|
+| API | `http://localhost:8000` | — |
+| OpenAPI docs | `http://localhost:8000/docs` | — |
+| API / worker metrics | `http://localhost:8000/metrics` / `:8001/metrics` | — |
+| Prometheus | `http://localhost:9090` | — |
+| Grafana | `http://localhost:3000` | `admin` / `shanano` |
+| pgAdmin | `http://localhost:5050` | `admin@shanano.dev` / `shanano` |
 
 ## License
 
-This is an educational project. Feel free to explore and learn from the code!
-
-The audio files I used in my experiments were obtained from the MUSAN audio collection. [MUSAN](https://openslr.org/17/) is a corpus of music, speech, and noise recordings supported by the National Science Foundation Graduate Research Fellowship under Grant No. 1232825 and by Spoken Communications.
-
-```LaTeX
-@misc{musan2015,
-  author = {David Snyder and Guoguo Chen and Daniel Povey},
-  title = {{MUSAN}: {A} {M}usic, {S}peech, and {N}oise {C}orpus},
-  year = {2015},
-  eprint = {1510.08484},
-  note = {arXiv:1510.08484v1}
-}
-```
+Educational project. Audio files from the [MUSAN](https://openslr.org/17/)
+corpus.
