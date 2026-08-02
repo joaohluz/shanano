@@ -14,6 +14,11 @@ Create a throwaway DB. `export`ed vars don't carry across shells, so **each
 terminal must set them again** — a missing `$DB` gives
 `sqlalchemy.exc.ArgumentError: Could not parse SQLAlchemy URL`.
 
+> **Tip:** a `Makefile` wraps all of the below into named targets (`make help`
+> to list them). It sets `DATABASE_URL`/`JWT_SECRET`/`BASE` for you, so no
+> per-terminal exports are needed. The commands below are the same ones the
+> targets run, shown for the raw curl version.
+
 ```bash
 source .venv/bin/activate
 export DB=sqlite+aiosqlite:////tmp/shanano_demo.db
@@ -37,6 +42,30 @@ source .venv/bin/activate
 export DB=sqlite+aiosqlite:////tmp/shanano_demo.db
 export BASE=http://localhost:8000
 ```
+
+### Makefile quick reference
+
+Each target is a standalone command in its own terminal (they don't share env):
+
+```bash
+make setup        # reset the demo DB
+make api          # start the API on :8000            (terminal 1)
+make worker       # start the fingerprinting worker   (terminal 2/3)
+make catalog      # fetch one IA batch (librivoxaudio, max 1)
+make dedupe       # re-run catalog -> "already ingested, skipping"
+make songs        # list songs w/ metadata (public API)
+make status       # id/status/fingerprint_count only
+make auth         # run the 8 auth checks
+make clip         # cut a 15s clip from the catalog song
+make match        # match the clip (expect 200 + metadata)
+make negative     # noise=404 / no-token=401 / bad-format=400
+make upload       # upload data/assets/clean_wavs/music-hd-0001.wav
+make clean        # remove demo DB + temp clip/noise
+```
+
+Full flow: `make setup`, `make api` (terminal 1), `make catalog`, `make worker`
+(terminal 2), wait for `make status` to show `completed`, then
+`make clip` + `make match`.
 
 ---
 
@@ -211,17 +240,13 @@ takes ~30s to fingerprint). Then, in **Terminal 2**:
 
 ```bash
 # Cut the first 15 seconds of the downloaded track into a WAV clip
-python3 -c "
-import numpy as np, soundfile as sf
-from audio_processing.audio import load_audio
-y, sr = load_audio('data/uploads/*.ogg')
-sf.write('/tmp/clip.wav', y[:int(15*sr)], sr)
-print('clip written:', len(y[:int(15*sr)])/sr, 's')
-"
+# (or just: make clip)
+python3 scripts/demo_audio.py clip
 ```
 
-(`data/uploads/*.ogg` — glob the file the catalog downloaded. For a WAV catalog
-item, change the suffix.)
+The helper reads the catalog song's actual `file_path` from the DB (the most
+recently completed song), so it always clips the right file even if other audio
+sits in `data/uploads/`.
 
 ### 3b. Match it (authenticated)
 
@@ -243,11 +268,7 @@ genre, cover art URL, source URL) plus `score` and `confidence`
 
 ```bash
 # Random noise must NOT match → expect 404 (thresholds reject weak hits)
-python3 -c "
-import numpy as np, soundfile as sf
-rng = np.random.default_rng(1)
-sf.write('/tmp/noise.wav', rng.standard_normal(22050*5), 22050)
-"
+python3 scripts/demo_audio.py noise   # or: make noise
 curl -s -o /dev/null -w "noise: %{http_code}\n" $BASE/match/ \
   -H "Authorization: Bearer $TOKEN" -F "file=@/tmp/noise.wav"   # 404
 
@@ -280,6 +301,15 @@ rm -f /tmp/shanano_demo.db /tmp/clip.wav /tmp/noise.wav
   `archive.org`.
 - The catalog CLI uses the same `DATABASE_URL` as the API; the API must have
   started once first so the schema exists (or run `alembic upgrade head`).
+- **`make setup` / deleting the DB does NOT reset a running API.** The running
+  process keeps an open file descriptor to the old (unlinked) SQLite file and
+  will keep serving stale data. Stop the API and worker first, then reset and
+  restart:
+  ```bash
+  pkill -f "uvicorn api.main:app"; pkill -f "worker.py"
+  make setup
+  make api    # fresh schema + seeded users
+  ```
 - A match returns a candidate only when it clears both thresholds: `score >= 2`
   and `confidence >= 0.2` (tunable via `MATCH_MIN_SCORE` / `MATCH_MIN_CONFIDENCE`).
 - Only the terminal demo is shown here. A web UI (login / upload / match) lands
