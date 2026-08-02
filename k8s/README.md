@@ -30,6 +30,7 @@ kubectl apply -f k8s/00-namespace.yaml
 kubectl apply -f k8s/01-configmap.yaml
 kubectl apply -f k8s/02-storage.yaml
 kubectl apply -f k8s/03-postgres.yaml
+kubectl apply -f k8s/secret.yaml
 kubectl apply -f k8s/04-api.yaml
 kubectl apply -f k8s/05-worker.yaml
 kubectl apply -f k8s/06-loadgen.yaml
@@ -66,8 +67,11 @@ kubectl -n shanano logs -f deploy/api
 kubectl -n shanano logs -f deploy/worker
 kubectl -n shanano logs -f deploy/loadgen
 
-# Manually trigger traffic against the API
-curl -X POST -F "file=@data/assets/clean_wavs/music-hd-0001.wav" http://localhost:30000/songs/
+# Manually trigger traffic against the API (POST /songs/ and DELETE need a bearer token; login first)
+TOKEN=$(curl -s -X POST -d "username=admin&password=admin" http://localhost:30000/auth/login \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -F "file=@data/assets/clean_wavs/music-hd-0001.wav" http://localhost:30000/songs/
 
 # Scale the API up/down to watch it affect the dashboard
 kubectl -n shanano scale deploy/api --replicas=4
@@ -101,6 +105,7 @@ Scaling a deployment to 0 leaves its `StatefulSet`, PVCs, and stored data intact
 ## Notes
 
 - kind only publishes the Kubernetes API port (6443) to the host by default. `k8s/kind-config.yaml` adds `extraPortMappings` so the NodePorts above are reachable on `localhost` — this must be passed at cluster creation time (`--config k8s/kind-config.yaml`); you can't add port mappings to an existing cluster without recreating it.
+- Auth (Iteration 4): `k8s/secret.yaml` holds the `JWT_SECRET` plus the bootstrap `ADMIN_*` / `LOADGEN_*` credentials, and is injected via `envFrom.secretRef` into api and loadgen (loadgen logs in with `LOADGEN_*` and sends the bearer token, so its uploads/deletes are authorized). `GET /songs*`, `/health`, `/metrics`, and `POST /match/` stay public. Replace the dev secret values before any real deployment.
 - `uploads-pvc` and Postgres storage are `ReadWriteOnce`, so API replicas, worker, and Postgres must all schedule onto the same node. This is a safe assumption on a single-node kind cluster. A multi-node cluster would need a `ReadWriteMany` volume (e.g. NFS) for uploads.
 - The worker processes uploads serially (one poll loop). If loadgen uploads faster than the worker can fingerprint, `pending` songs accumulate — which is itself a nice thing to watch on the "Songs by Status" panel.
 - Prometheus uses `kubernetes_sd_configs` (role: endpoints) to scrape each replica individually. This is why `sum(shanano_..._total)` across the API's 2 replicas is monotonic — scraping a Service instead would round-robin to a random pod each time, making counters bounce up and down. Each pod reset (restart) still drops that pod's counter to 0; use `rate()` for rate panels, which handles resets.
@@ -109,6 +114,5 @@ Scaling a deployment to 0 leaves its `StatefulSet`, PVCs, and stored data intact
 ## Planned (Iteration 4)
 
 - `k8s/10-catalog-cronjob.yaml` — recurring Internet Archive fetch job (mounts `uploads-pvc`, env from configmap + secret) that populates the catalog with metadata-bearing songs for the worker to fingerprint.
-- `k8s/secret.yaml` — JWT secret + admin credentials, referenced via `envFrom.secretRef` by api/worker/loadgen/cronjob.
 - New configmap keys: `CATALOG_COLLECTION`, `CATALOG_MAX_ITEMS`, `JWT_*`.
 - See the full spec in `AGENTS.md` (Iteration 4).

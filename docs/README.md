@@ -2,8 +2,8 @@
 
 Explanations of how each Shanano feature works **today** (Iterations 1–4
 complete: catalog ingestion, auth, real matching, and the webapp are all
-implemented). The only spec item still pending is the K8s catalog CronJob +
-secret (`k8s/README.md` → "Planned").
+implemented). The only spec item still pending is the K8s catalog CronJob
+(`k8s/README.md` → "Planned").
 
 Each page covers the same four angles so you can compare features easily:
 

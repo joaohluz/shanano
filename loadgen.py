@@ -5,6 +5,12 @@ visibly go up and down. The aggregate request rate follows a sine wave
 between LOADGEN_MIN_RPS and LOADGEN_MAX_RPS over LOADGEN_WAVE_PERIOD
 seconds, so dashboards show a breathing pattern instead of a flat line.
 
+Auth (Iteration 4): the API now protects /songs (upload) and DELETE with
+bearer JWTs. loadgen logs in once at startup with LOADGEN_USERNAME /
+LOADGEN_PASSWORD and sends the token on every request (public endpoints
+just ignore it). The loadgen account is seeded as an admin so the delete
+endpoint is exercised too.
+
 Endpoints exercised (weighted random mix):
     GET    /health        health checks
     GET    /songs/        browse catalog
@@ -63,6 +69,8 @@ class LoadgenConfig:
     wave_period: float = 120.0
     duration: float = 0.0
     seed: int | None = None
+    username: str = "loadgen"
+    password: str = "loadgen"
 
     @classmethod
     def from_env(cls) -> "LoadgenConfig":
@@ -74,6 +82,8 @@ class LoadgenConfig:
             wave_period=float(os.getenv("LOADGEN_WAVE_PERIOD", "120")),
             duration=float(os.getenv("LOADGEN_DURATION", "0")),
             seed=int(os.getenv("LOADGEN_SEED", "0")) or None,
+            username=os.getenv("LOADGEN_USERNAME", "loadgen"),
+            password=os.getenv("LOADGEN_PASSWORD", "loadgen"),
         )
 
 
@@ -112,6 +122,29 @@ def pick_endpoint(rng: random.Random, known_song_ids: list[int]) -> str:
                 return "list"
             return endpoint
     return "list"
+
+
+async def login(client: httpx.AsyncClient, cfg: LoadgenConfig) -> str:
+    """Authenticate as the loadgen user, returning a bearer token.
+
+    Retries for ~30s so loadgen can start before the API has finished
+    booting (compose/k8s startup race). Raises RuntimeError on persistent
+    failure so the process exits loudly instead of silently 401ing forever.
+    """
+    url = f"{cfg.target}/auth/login"
+    last_error: Exception | None = None
+    for attempt in range(10):
+        try:
+            resp = await client.post(
+                url, data={"username": cfg.username, "password": cfg.password}
+            )
+            resp.raise_for_status()
+            return resp.json()["access_token"]
+        except (httpx.HTTPError, KeyError, ValueError) as exc:
+            last_error = exc
+            logger.warning("login failed, retrying", attempt=attempt, error=str(exc))
+            await asyncio.sleep(3.0)
+    raise RuntimeError(f"could not log in as '{cfg.username}': {last_error}")
 
 
 class SongRegistry:
@@ -251,6 +284,10 @@ async def run(cfg: LoadgenConfig) -> None:
     wavs = [generate_chirp_wav(d) for d in UPLOAD_DURATIONS]
 
     async with httpx.AsyncClient(timeout=30.0) as client:
+        token = await login(client, cfg)
+        # Send the bearer token on every request; public endpoints (health,
+        # list, get, match) simply ignore it, upload/delete require it.
+        client.headers.update({"Authorization": f"Bearer {token}"})
         logger.info(
             "loadgen started",
             target=cfg.target,
@@ -258,6 +295,7 @@ async def run(cfg: LoadgenConfig) -> None:
             min_rps=cfg.min_rps,
             max_rps=cfg.max_rps,
             wave_period=cfg.wave_period,
+            username=cfg.username,
         )
         tasks = [
             asyncio.create_task(
@@ -297,6 +335,8 @@ def parse_args() -> LoadgenConfig:
     parser.add_argument("--wave-period", type=float, default=None, help="Seconds per wave (env LOADGEN_WAVE_PERIOD)")
     parser.add_argument("--duration", type=float, default=None, help="Run for N seconds, 0 = forever (env LOADGEN_DURATION)")
     parser.add_argument("--seed", type=int, default=None, help="Random seed (env LOADGEN_SEED)")
+    parser.add_argument("--username", default=None, help="Loadgen account username (env LOADGEN_USERNAME)")
+    parser.add_argument("--password", default=None, help="Loadgen account password (env LOADGEN_PASSWORD)")
     args = parser.parse_args()
 
     cfg = LoadgenConfig.from_env()
@@ -314,6 +354,10 @@ def parse_args() -> LoadgenConfig:
         cfg.duration = args.duration
     if args.seed is not None:
         cfg.seed = args.seed
+    if args.username is not None:
+        cfg.username = args.username
+    if args.password is not None:
+        cfg.password = args.password
     return cfg
 
 

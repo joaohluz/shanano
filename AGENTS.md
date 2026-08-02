@@ -103,8 +103,11 @@ curl http://localhost:8000/metrics
 # Grafana dashboard (admin / shanano)
 open http://localhost:3000
 
-# Upload a song to test the pipeline
-curl -X POST -F "file=@data/assets/clean_wavs/music-hd-0001.wav" http://localhost:8000/songs/
+# Upload a song to test the pipeline (POST /songs/ and DELETE need a bearer token)
+TOKEN=$(curl -s -X POST -d "username=admin&password=admin" http://localhost:8000/auth/login \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -F "file=@data/assets/clean_wavs/music-hd-0001.wav" http://localhost:8000/songs/
 
 # List songs
 curl http://localhost:8000/songs/
@@ -172,9 +175,9 @@ Goals: populate the catalog automatically from a safe open-source source, secure
 
 #### Remaining items (post-Iteration-4 gaps)
 
-- **K8s catalog CronJob + secret** — `k8s/10-catalog-cronjob.yaml` and `k8s/secret.yaml` are still not written; the catalog runs via the CLI/`make catalog` only (see `k8s/README.md` → "Planned").
-- **Compose/K8s auth env** — `docker-compose.yml` and the k8s manifests don't set `JWT_SECRET` / `ADMIN_*` / `LOADGEN_*`, so the auth-protected endpoints aren't usable in those deployments yet.
-- **loadgen auth** — `loadgen.py` doesn't log in or attach a `Bearer` header, so its upload/delete requests currently return 401 (it logs them and keeps running).
+- **K8s catalog CronJob** — `k8s/10-catalog-cronjob.yaml` is still not written; the catalog runs via the CLI/`make catalog` only (see `k8s/README.md` → "Planned"). The K8s secret (`k8s/secret.yaml`) it needs *is* in place now (see below).
+- **loadgen auth** — DONE: `loadgen.py` logs in once at startup (`POST /auth/login` with `LOADGEN_USERNAME`/`LOADGEN_PASSWORD`) and sends the bearer token on every request. The loadgen account is seeded as an **admin** (`core/user_service.py`) so its `DELETE /songs/{id}` requests are authorized, not just its uploads.
+- **Compose/K8s auth env** — DONE: `docker-compose.yml` sets `JWT_SECRET` + `ADMIN_*`/`LOADGEN_*` on api and `LOADGEN_*` on loadgen; `k8s/secret.yaml` (JWT secret + bootstrap creds) is injected via `envFrom.secretRef` into the api and loadgen Deployments.
 
 ### 🔜 Upcoming Iterations (beyond 4)
 
@@ -221,6 +224,7 @@ shanano/
 │   ├── 07-prometheus.yaml   # ConfigMap + Deployment + NodePort :30900
 │   ├── 08-grafana.yaml      # Provisioning ConfigMaps + Deployment + NodePort :30030
 │   ├── 09-pgadmin.yaml      # pgAdmin Deployment + NodePort :30050
+│   ├── secret.yaml          # JWT secret + admin/loadgen bootstrap creds
 │   └── README.md            # kind deploy walkthrough
 ├── migrations/
 │   ├── env.py               # Async Alembic env

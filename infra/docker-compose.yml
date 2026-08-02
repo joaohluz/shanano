@@ -22,6 +22,11 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://shanano:shanano@db:5432/shanano
       UPLOAD_DIR: /app/data/uploads
+      JWT_SECRET: dev-secret-change-me
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin
+      LOADGEN_USERNAME: loadgen
+      LOADGEN_PASSWORD: loadgen
     ports:
       - "8000:8000"
     volumes:
@@ -67,6 +72,8 @@ services:
       LOADGEN_MIN_RPS: "1"
       LOADGEN_MAX_RPS: "20"
       LOADGEN_WAVE_PERIOD: "120"
+      LOADGEN_USERNAME: loadgen
+      LOADGEN_PASSWORD: loadgen
     depends_on:
       api:
         condition: service_started

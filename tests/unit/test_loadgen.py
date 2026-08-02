@@ -8,6 +8,7 @@ from loadgen import (
     ENDPOINT_WEIGHTS,
     LoadgenConfig,
     generate_chirp_wav,
+    login,
     pick_endpoint,
     target_rps,
 )
@@ -86,6 +87,8 @@ class TestLoadgenConfigFromEnv:
             "LOADGEN_WAVE_PERIOD",
             "LOADGEN_DURATION",
             "LOADGEN_SEED",
+            "LOADGEN_USERNAME",
+            "LOADGEN_PASSWORD",
         ):
             monkeypatch.delenv(var, raising=False)
         cfg = LoadgenConfig.from_env()
@@ -96,14 +99,45 @@ class TestLoadgenConfigFromEnv:
         assert cfg.wave_period == 120.0
         assert cfg.duration == 0.0
         assert cfg.seed is None
+        assert cfg.username == "loadgen"
+        assert cfg.password == "loadgen"
 
     def test_reads_env(self, monkeypatch):
         monkeypatch.setenv("LOADGEN_TARGET", "http://api:8000")
         monkeypatch.setenv("LOADGEN_WORKERS", "4")
         monkeypatch.setenv("LOADGEN_MAX_RPS", "50")
         monkeypatch.setenv("LOADGEN_SEED", "7")
+        monkeypatch.setenv("LOADGEN_USERNAME", "traffic")
+        monkeypatch.setenv("LOADGEN_PASSWORD", "s3cret")
         cfg = LoadgenConfig.from_env()
         assert cfg.target == "http://api:8000"
         assert cfg.workers == 4
         assert cfg.max_rps == 50.0
         assert cfg.seed == 7
+        assert cfg.username == "traffic"
+        assert cfg.password == "s3cret"
+
+
+class TestLogin:
+    async def test_returns_access_token_from_form_login(self):
+        class FakeResponse:
+            def raise_for_status(self) -> None:
+                pass
+
+            def json(self) -> dict:
+                return {"access_token": "tok", "token_type": "bearer"}
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls: list[tuple] = []
+
+            async def post(self, url: str, **kwargs):
+                self.calls.append((url, kwargs))
+                return FakeResponse()
+
+        client = FakeClient()
+        cfg = LoadgenConfig(target="http://api:8000", username="u", password="p")
+        assert await login(client, cfg) == "tok"
+        url, kwargs = client.calls[0]
+        assert url == "http://api:8000/auth/login"
+        assert kwargs["data"] == {"username": "u", "password": "p"}

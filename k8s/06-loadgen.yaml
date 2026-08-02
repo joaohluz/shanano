@@ -18,6 +18,9 @@ spec:
           image: shanano-api:latest
           imagePullPolicy: IfNotPresent
           command: ["python", "loadgen.py"]
+          envFrom:
+            - secretRef:
+                name: shanano-secrets
           env:
             - name: LOADGEN_TARGET
               value: http://api:8000

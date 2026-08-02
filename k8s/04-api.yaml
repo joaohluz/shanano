@@ -35,6 +35,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: shanano-config
+            - secretRef:
+                name: shanano-secrets
           ports:
             - name: http
               containerPort: 8000

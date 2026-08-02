@@ -55,13 +55,16 @@ async def create_user(
 async def seed_users(db: AsyncSession) -> int:
     """Create the bootstrap admin + loadgen users from env if missing.
 
-    Skips accounts whose env credentials are unset, and never overwrites an
-    existing user's password. Returns the number of users created.
+    The loadgen account is created as an admin: DELETE /songs/{id} is
+    admin-only and loadgen exercises it (fake traffic churn), so a plain
+    user role would lock it out. Skips accounts whose env credentials are
+    unset, and never overwrites an existing user's password. Returns the
+    number of users created.
     """
     created = 0
     for username, password, role in (
         (ADMIN_USERNAME, ADMIN_PASSWORD, UserRole.admin),
-        (LOADGEN_USERNAME, LOADGEN_PASSWORD, UserRole.user),
+        (LOADGEN_USERNAME, LOADGEN_PASSWORD, UserRole.admin),
     ):
         if not username or not password:
             continue

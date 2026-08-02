@@ -78,7 +78,8 @@ The same code runs in three ways:
 3. **Kubernetes / kind** (`k8s/`) — API Deployment ×2, worker, PostgreSQL
    StatefulSet, loadgen, Prometheus, Grafana, pgAdmin, with an `uploads` PVC.
 
-> Note: as of today the Compose and K8s deployments do **not** set `JWT_SECRET`
-> or the `ADMIN_*`/`LOADGEN_*` seeding vars, so the auth-protected endpoints are
-> not usable in those deployments yet (the K8s catalog CronJob + secret also
-> aren't written). See [auth.md](auth.md) for the env vars the API needs.
+> Note: as of today Compose and K8s set `JWT_SECRET` and the
+> `ADMIN_*`/`LOADGEN_*` seeding vars (Compose inline; K8s via
+> `k8s/secret.yaml`), and loadgen authenticates, so the auth-protected
+> endpoints work in both deployments. The only pending K8s item is the
+> catalog CronJob. See [auth.md](auth.md) for the env vars the API needs.

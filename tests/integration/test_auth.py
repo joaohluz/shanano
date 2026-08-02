@@ -227,7 +227,7 @@ class TestSeedUsers:
             by_name = {u.username: u for u in users}
             assert set(by_name) == {"admin", "loadgen"}
             assert by_name["admin"].role == "admin"
-            assert by_name["loadgen"].role == "user"
+            assert by_name["loadgen"].role == "admin"
 
     async def test_seed_is_idempotent(self, db_engine):
         from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

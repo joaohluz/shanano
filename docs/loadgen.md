@@ -47,10 +47,19 @@ so the aggregate rate tracks the sine wave.
 
 Standalone CLI, `docker compose up -d loadgen`, or the K8s `loadgen` Deployment.
 Flags/env: `LOADGEN_TARGET`, `LOADGEN_WORKERS`, `LOADGEN_MIN_RPS`,
-`LOADGEN_MAX_RPS`, `LOADGEN_WAVE_PERIOD`, `LOADGEN_DURATION`, `LOADGEN_SEED`.
+`LOADGEN_MAX_RPS`, `LOADGEN_WAVE_PERIOD`, `LOADGEN_DURATION`, `LOADGEN_SEED`,
+`LOADGEN_USERNAME`, `LOADGEN_PASSWORD`.
 
 ## Design choices
 
+- **Authenticates as the seeded loadgen account.** Since Iteration 4 made
+  `POST /songs/` (any authed user) and `DELETE /songs/{id}` (admin-only)
+  auth-protected, loadgen logs in once at startup via `POST /auth/login` with
+  `LOADGEN_USERNAME`/`LOADGEN_PASSWORD` (retrying for ~30s to survive the
+  compose/k8s startup race) and then sends the bearer token on every request.
+  Public endpoints (`health`, `list`, `get`, `match`) simply ignore it.
+  The loadgen user is seeded as an **admin** (`core/user_service.py`) so the
+  delete endpoint is exercised too, not just uploads.
 - **Sine-wave request rate.** `target_rps(t)` oscillates between
   `LOADGEN_MIN_RPS` and `LOADGEN_MAX_RPS` over `LOADGEN_WAVE_PERIOD` seconds, so
   dashboards "breathe" — you can visually confirm Prometheus/Grafana are working.
@@ -62,10 +71,3 @@ Flags/env: `LOADGEN_TARGET`, `LOADGEN_WORKERS`, `LOADGEN_MIN_RPS`,
 - **SongRegistry** tracks which song ids exist so `get`/`delete` target real rows
   (falling back to `list` when the catalog is empty) instead of spraying 404s.
 - **Seeded randomness** (`LOADGEN_SEED`) makes runs reproducible.
-
-## Known gap
-
-The loadgen doesn't authenticate yet. Since Iteration 4 made upload/delete
-auth-protected, those requests currently return 401 (the generator logs them as
-non-2xx but keeps running). Wiring login + a `Bearer` header into loadgen is
-still pending.
