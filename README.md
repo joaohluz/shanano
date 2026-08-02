@@ -5,6 +5,8 @@ turned into a distributed, observable, production-ish system. Each iteration
 exists to explore a different engineering topic — with real code, not just
 notes.
 
+![Screenshot of UI](/docs/README.png)
+
 ## Topics explored
 
 | Iteration | Topic | What was built |
