@@ -25,7 +25,7 @@ SUPPORTED_AUDIO_EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg", ".m4a")
 # matched fingerprints voting for the winning offset). Keeps single spurious
 # hash collisions (score 1) from producing false positives.
 MATCH_MIN_SCORE = int(os.getenv("MATCH_MIN_SCORE", "2"))
-MATCH_MIN_CONFIDENCE = float(os.getenv("MATCH_MIN_CONFIDENCE", "0.1"))
+MATCH_MIN_CONFIDENCE = float(os.getenv("MATCH_MIN_CONFIDENCE", "0.2"))
 
 # Auth (Iteration 4, Phase 4.3)
 # JWT_SECRET has NO default: it must come from the environment (never hardcode it).

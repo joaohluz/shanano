@@ -2,9 +2,7 @@ name: test
 
 on:
   push:
-    branches: [scalable-shazam]
   pull_request:
-    branches: [scalable-shazam]
 
 jobs:
   test:

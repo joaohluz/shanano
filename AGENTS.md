@@ -55,7 +55,7 @@ Learning project: turning a minimal Shazam clone into a distributed, observable,
 - `tests/integration/` — integration tests (API routes, song service, worker)
 - `requirements-dev.txt` — test dependencies (pytest, httpx, aiosqlite, pytest-cov)
 - `pytest.ini` — pytest configuration (asyncio_mode=auto)
-- `.github/workflows/test.yml` — CI on push/PR to scalable-shazam
+- `.github/workflows/test.yml` — CI on push/PR to every branch
 - `data/` — sample audio files
 
 ## Communication
@@ -120,7 +120,7 @@ curl http://localhost:8000/songs/
 - **FastAPI TestClient**: via `httpx.AsyncClient` with `get_db` dependency override
 - **Test isolation**: each test gets a fresh DB engine + session (function-scoped fixtures)
 - **Markers**: `unit` (no external deps) and `integration` (DB, API)
-- **CI**: GitHub Actions on push/PR to `scalable-shazam` (`.github/workflows/test.yml`)
+- **CI**: GitHub Actions on push/PR to every branch (`.github/workflows/test.yml`)
 
 ## Iteration Status
 
