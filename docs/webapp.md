@@ -15,7 +15,7 @@ Matching is anonymous: `POST /match/` is public and the app sends no token.
 
 ```mermaid
 sequenceDiagram
-    participant B as Browser (index.html)
+    participant B as "Browser (index.html)"
     participant APP as app.js
     participant AUD as audio.js
     participant API as api/routes/match.py

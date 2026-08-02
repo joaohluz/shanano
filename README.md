@@ -25,7 +25,7 @@ from the bundled offline seed (`make seed`).
 
 ```mermaid
 graph TB
-    WEB[Webapp<br/>browser mic -> WAV query]
+    WEB["Webapp<br/>browser mic -> WAV query"]
     CLI[curl / scripts]
     LOADGEN[loadgen.py<br/>fake traffic]
 
@@ -41,7 +41,7 @@ graph TB
     PROM[Prometheus]
     GRAF[Grafana]
 
-    WEB -->|POST /match/ (public)| API
+    WEB -->|"POST /match/ (public)"| API
     CLI -->|auth / upload / match| API
     LOADGEN -->|sine-wave traffic| API
 
