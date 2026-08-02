@@ -7,3 +7,4 @@ coverage.xml
 htmlcov/
 .coverage
 data/uploads/
+data/seed/*.tar.gz
