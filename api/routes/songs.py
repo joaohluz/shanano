@@ -6,7 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_user, get_db, require_admin
-from config import UPLOAD_DIR
+from config import SUPPORTED_AUDIO_EXTENSIONS, UPLOAD_DIR
 from core.metrics import songs_uploaded
 from core.models import Fingerprint, Song, User
 from core.schemas import SongOut, SongListOut
@@ -61,8 +61,8 @@ async def add_song(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
-    if not file.filename or not file.filename.endswith(".wav"):
-        raise HTTPException(status_code=400, detail="Only WAV files are supported")
+    if not file.filename or Path(file.filename).suffix.lower() not in SUPPORTED_AUDIO_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Unsupported audio format")
 
     upload_dir = Path(UPLOAD_DIR)
     upload_dir.mkdir(parents=True, exist_ok=True)

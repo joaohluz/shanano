@@ -11,7 +11,7 @@ Endpoints exercised (weighted random mix):
     GET    /songs/{id}    song details
     POST   /songs/        upload a synthetic chirp WAV
     DELETE /songs/{id}    remove songs
-    POST   /match/        match attempts (returns 501)
+    POST   /match/        match attempts against the catalog
 
 Run standalone:
     python loadgen.py

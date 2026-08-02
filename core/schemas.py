@@ -38,6 +38,18 @@ class SongListOut(BaseModel):
 class MatchResultOut(BaseModel):
     song_name: str
     score: int
+    # Full song metadata of the best candidate (populated on a successful match).
+    id: Optional[int] = None
+    status: Optional[ProcessingStatus] = None
+    artist: Optional[str] = None
+    album: Optional[str] = None
+    year: Optional[int] = None
+    genre: Optional[str] = None
+    cover_art_url: Optional[str] = None
+    source: Optional[str] = None
+    source_url: Optional[str] = None
+    # Fraction of matched fingerprints that voted for the winning offset.
+    confidence: Optional[float] = None
 
 
 class UserCreate(BaseModel):

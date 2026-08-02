@@ -180,11 +180,95 @@ sqlite3 /tmp/shanano_demo.db "SELECT name, status FROM songs;"
 
 ---
 
-## 3. Cleanup
+## 3. Match — real audio matching
+
+This section matches a query clip against the catalog. It assumes section 2 ran
+and the worker finished fingerprinting the song (status `completed`; ~30s for a
+5-minute track). A fresh start is simplest:
+
+```bash
+# Terminal 1
+source .venv/bin/activate
+export DB=sqlite+aiosqlite:////tmp/shanano_demo.db
+DATABASE_URL=$DB JWT_SECRET=demo-secret uvicorn api.main:app --port 8000
+
+# Terminal 2
+source .venv/bin/activate
+export DB=sqlite+aiosqlite:////tmp/shanano_demo.db
+export BASE=http://localhost:8000
+DATABASE_URL=$DB python catalog_fetch.py --collection librivoxaudio --max-items 1
+
+# Terminal 3 — worker fingerprints the pending song
+source .venv/bin/activate
+export DB=sqlite+aiosqlite:////tmp/shanano_demo.db
+DATABASE_URL=$DB python worker.py
+```
+
+Wait until `curl -s $BASE/songs/` shows `"status": "completed"` (a 5-min track
+takes ~30s to fingerprint). Then, in **Terminal 2**:
+
+### 3a. Build a query clip from the downloaded song
+
+```bash
+# Cut the first 15 seconds of the downloaded track into a WAV clip
+python3 -c "
+import numpy as np, soundfile as sf
+from audio_processing.audio import load_audio
+y, sr = load_audio('data/uploads/*.ogg')
+sf.write('/tmp/clip.wav', y[:int(15*sr)], sr)
+print('clip written:', len(y[:int(15*sr)])/sr, 's')
+"
+```
+
+(`data/uploads/*.ogg` — glob the file the catalog downloaded. For a WAV catalog
+item, change the suffix.)
+
+### 3b. Match it (authenticated)
+
+```bash
+TOKEN=$(curl -s $BASE/auth/login -d "username=admin&password=admin" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+
+curl -s $BASE/match/ \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@/tmp/clip.wav" | python3 -m json.tool
+```
+
+Expected: the song that the clip came from, with full metadata (artist, year,
+genre, cover art URL, source URL) plus `score` and `confidence`
+(score > 0, 0 < confidence ≤ 1).
+
+### 3c. Negative cases
+
+```bash
+# Random noise must NOT match → expect 404 (thresholds reject weak hits)
+python3 -c "
+import numpy as np, soundfile as sf
+rng = np.random.default_rng(1)
+sf.write('/tmp/noise.wav', rng.standard_normal(22050*5), 22050)
+"
+curl -s -o /dev/null -w "noise: %{http_code}\n" $BASE/match/ \
+  -H "Authorization: Bearer $TOKEN" -F "file=@/tmp/noise.wav"   # 404
+
+# No token → expect 401
+curl -s -o /dev/null -w "no-token: %{http_code}\n" -X POST $BASE/match/ \
+  -F "file=@/tmp/clip.wav"                                      # 401
+
+# Unsupported extension → expect 400
+curl -s -o /dev/null -w "bad-format: %{http_code}\n" $BASE/match/ \
+  -H "Authorization: Bearer $TOKEN" -F "file=@/tmp/clip.wav;type=text/plain;filename=clip.txt"  # 400
+```
+
+Expected: `noise: 404`, `no-token: 401`, `bad-format: 400`.
+
+---
+
+## 4. Cleanup
 
 ```bash
 # Stop the API (Ctrl-C) and worker (Ctrl-C)
-rm -f /tmp/shanano_demo.db
+rm -f /tmp/shanano_demo.db /tmp/clip.wav /tmp/noise.wav
 # optionally remove downloaded files: rm -f data/uploads/*.ogg data/uploads/*.flac
 ```
 
@@ -196,5 +280,7 @@ rm -f /tmp/shanano_demo.db
   `archive.org`.
 - The catalog CLI uses the same `DATABASE_URL` as the API; the API must have
   started once first so the schema exists (or run `alembic upgrade head`).
+- A match returns a candidate only when it clears both thresholds: `score >= 2`
+  and `confidence >= 0.2` (tunable via `MATCH_MIN_SCORE` / `MATCH_MIN_CONFIDENCE`).
 - Only the terminal demo is shown here. A web UI (login / upload / match) lands
   in a later phase — the endpoints it will call are the ones above.

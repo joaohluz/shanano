@@ -94,14 +94,30 @@ class TestAddSong:
         from pathlib import Path
         assert (Path(tmp) / "test.wav").exists()
 
-    async def test_rejects_non_wav(self, client, auth_headers):
+    async def test_upload_mp3_accepted(self, client, monkeypatch, auth_headers):
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        monkeypatch.setattr("api.routes.songs.UPLOAD_DIR", tmp)
+
         response = await client.post(
             "/songs/",
-            files={"file": ("test.mp3", b"fake-content", "audio/mpeg")},
+            files={"file": ("song.mp3", b"fake-mp3-content", "audio/mpeg")},
+            headers=auth_headers,
+        )
+        assert response.status_code == 201
+        assert response.json()["name"] == "song.mp3"
+
+        from pathlib import Path
+        assert (Path(tmp) / "song.mp3").exists()
+
+    async def test_rejects_unsupported_format(self, client, auth_headers):
+        response = await client.post(
+            "/songs/",
+            files={"file": ("test.txt", b"fake-content", "text/plain")},
             headers=auth_headers,
         )
         assert response.status_code == 400
-        assert "WAV" in response.json()["detail"]
+        assert "Unsupported" in response.json()["detail"]
 
     async def test_rejects_no_filename(self, client, auth_headers):
         response = await client.post(

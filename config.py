@@ -16,6 +16,16 @@ IA_DETAILS_URL = "https://archive.org/details"
 # (lossless FLAC/OGG first, M4A/MP3 as fallback per Iteration 4 spec).
 CATALOG_AUDIO_EXTENSIONS = (".flac", ".ogg", ".m4a", ".mp3")
 
+# Audio formats accepted by the upload/match endpoints (librosa decodes these).
+SUPPORTED_AUDIO_EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg", ".m4a")
+
+# Match acceptance thresholds: a candidate is only returned when it clears
+# both a minimum offset-vote score and a minimum confidence (fraction of
+# matched fingerprints voting for the winning offset). Keeps single spurious
+# hash collisions (score 1) from producing false positives.
+MATCH_MIN_SCORE = int(os.getenv("MATCH_MIN_SCORE", "2"))
+MATCH_MIN_CONFIDENCE = float(os.getenv("MATCH_MIN_CONFIDENCE", "0.2"))
+
 # Auth (Iteration 4, Phase 4.3)
 # JWT_SECRET has NO default: it must come from the environment (never hardcode it).
 # A RuntimeError is raised if a token is created/decoded without it.
