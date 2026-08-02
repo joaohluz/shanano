@@ -16,6 +16,7 @@ sequenceDiagram
 
     U->>API: POST /match/ (file, Bearer token)
     API->>API: validate extension (.wav/.mp3/.flac/.ogg/.m4a)
+    %% current impl: temp file (see ADR-0001 for the planned BytesIO change)
     API->>API: save to temp file
     API->>API: load_audio(temp)
     API->>P: pipeline.run(y) -> query fingerprints
@@ -32,6 +33,13 @@ sequenceDiagram
     SVC-->>API: (song, score, confidence)
     API-->>U: 200 MatchResultOut (full metadata)
 ```
+
+The algorithm runs after the query audio is fingerprinted. Note the current
+endpoint saves the upload to a temp file first; **this is the target of
+[ADR-0001](decisions/0001-client-sends-wav-for-match.md)** — since we build the
+client and it always sends WAV, the endpoint will instead decode from an
+in-memory `io.BytesIO` and drop the temp file entirely. The matching core below
+is untouched by that change; it only ever sees fingerprints.
 
 ## The algorithm (3 steps)
 
@@ -73,6 +81,12 @@ consistency is what makes the hashes comparable.
 
 ## Design choices
 
+- **Client always sends WAV (ADR-0001).** Because we control the client, match
+  queries are WAV 16-bit PCM, so the endpoint can decode from an in-memory
+  `BytesIO` — no named temp file. This works because matching is format-agnostic:
+  `load_audio` normalizes both catalog and query to mono 22050 Hz float32, and
+  the peak hashes survive codec differences. Catalog MP3/FLAC entries match WAV
+  queries fine; server-side decoding of catalog audio is unaffected.
 - **Faithful port, not a rewrite.** The SQLite algorithm is preserved 1:1 so
   the correctness already proven in the CLI still holds; only the storage layer
   (cursor → async ORM) changed.

@@ -26,6 +26,12 @@ Each page covers the same four angles so you can compare features easily:
 Start with [architecture.md](architecture.md) for the component overview, then
 pick a feature.
 
+## Decisions
+
+Architecture Decision Records: [decisions/0001-client-sends-wav-for-match.md](decisions/0001-client-sends-wav-for-match.md)
+— match clients always send WAV so `POST /match/` can decode from an in-memory
+buffer instead of a temp file.
+
 ## System overview
 
 ```mermaid

@@ -156,6 +156,7 @@ Goals: populate the catalog automatically from a safe open-source source, secure
   1. Add `ffmpeg` to `infra/Dockerfile` so MP3s decode reliably in the container.
   2. Relax `.wav`-only checks in `POST /songs/` and `POST /match/` to accept `.wav .mp3 .flac .ogg .m4a`.
 - **Endpoint protection**: `POST /songs/` any authed user, `DELETE /songs/{id}` admin-only, `POST /match/` any authed user. `GET /songs*`, `/health`, `/metrics` stay public (loadgen + Prometheus need them). loadgen updated to log in once and send `Authorization: Bearer`.
+- **Client match queries are always WAV (ADR-0001)**: since we build the client, it always sends WAV (16-bit PCM) for `POST /match/`. Matching is format-agnostic (both sides normalize to mono 22050 Hz, codec-robust peak hashes), so WAV queries match MP3/FLAC catalog entries fine. This lets `POST /match/` decode from an in-memory `BytesIO` and drop its temp-file step (the temp file only existed because `audioread` needs a path for MP3/M4A). Server-side decode of catalog audio (FLAC/OGG/MP3/M4A) is unaffected. Full writeup: `docs/decisions/0001-client-sends-wav-for-match.md`.
 
 #### Phases
 
