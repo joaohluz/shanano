@@ -9,39 +9,60 @@
 <body>
   <main class="container">
     <header class="hero">
+      <p class="eyebrow">High-Fidelity Audio Matching</p>
       <h1>Shanano</h1>
-      <p class="subtitle">Record audio to find its match</p>
+      <svg class="starburst" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor" d="M12 1l1.7 6.3L20 5.7 16.7 12 20 18.3l-6.3-1.6L12 23l-1.7-6.3L4 18.3 7.3 12 4 5.7l6.3 1.6z" />
+      </svg>
+      <p class="subtitle">Record a tune to find its match</p>
     </header>
 
     <section class="controls" aria-label="Recording controls">
-      <div class="record-row">
-        <button id="record-btn" type="button" class="record-btn">Record</button>
-        <label class="duration-picker" for="duration">
-          Duration
-          <select id="duration" name="duration">
-            <option value="5">5 s</option>
-            <option value="10" selected>10 s</option>
-            <option value="15">15 s</option>
-          </select>
-        </label>
-      </div>
+      <button id="record-btn" type="button" class="vinyl" aria-label="Start recording">
+        <span class="vinyl-disc">
+          <span class="vinyl-label" id="vinyl-label">REC</span>
+        </span>
+      </button>
       <p id="status" class="status" role="status" aria-live="polite"></p>
+      <label class="duration-picker" for="duration">
+        Duration
+        <select id="duration" name="duration">
+          <option value="5">5 s</option>
+          <option value="10" selected>10 s</option>
+          <option value="15">15 s</option>
+        </select>
+      </label>
     </section>
 
-    <section id="error" class="error" role="alert" hidden></section>
-
     <section id="result" class="result" hidden>
-      <div class="result-card">
-        <img id="result-cover" class="cover" alt="Cover art" hidden />
-        <div id="result-cover-fallback" class="cover fallback" hidden>No cover</div>
-        <div class="result-body">
+      <article class="poster">
+        <span class="poster-stamp">MATCHED</span>
+        <div class="poster-cover">
+          <img id="result-cover" class="cover" alt="Cover art" hidden />
+          <div id="result-cover-fallback" class="cover fallback" hidden>No cover</div>
+        </div>
+        <div class="poster-body">
           <h2 id="result-title" class="song-name"></h2>
           <p id="result-artist" class="artist"></p>
           <p id="result-genre" class="genre"></p>
           <p id="result-score" class="score"></p>
-          <a id="result-source" class="source" href="#" target="_blank" rel="noopener" hidden>View source</a>
+          <a id="result-source" class="source" href="#" target="_blank" rel="noopener" hidden>Listen on the Archive</a>
         </div>
-      </div>
+      </article>
+    </section>
+
+    <section id="error" class="error" hidden>
+      <article class="poster poster-error">
+        <span class="poster-stamp" id="error-stamp">OOPS</span>
+        <div class="poster-cover error-tile" aria-hidden="true">
+          <svg class="error-x" viewBox="0 0 24 24">
+            <path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </div>
+        <div class="poster-body">
+          <p id="error-text" class="error-detail"></p>
+        </div>
+      </article>
     </section>
 
     <footer class="footer">

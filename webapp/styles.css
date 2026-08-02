@@ -1,12 +1,11 @@
 :root {
-  --bg: #0f1420;
-  --surface: #1a2130;
-  --border: #2c3648;
-  --text: #e8edf5;
-  --muted: #8b96ab;
-  --accent: #4f8cff;
-  --accent-hover: #6ba0ff;
-  --error: #ff6b6b;
+  --bg: #f3e9d3;
+  --cream: #fdf6e6;
+  --ink: #33271a;
+  --muted: #8d7c60;
+  --accent: #e05d1f;
+  --accent-hover: #c74f18;
+  --error: #b23a2e;
 }
 
 * {
@@ -17,122 +16,102 @@ body {
   margin: 0;
   min-height: 100vh;
   background: var(--bg);
-  color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   display: flex;
   justify-content: center;
-  padding: 2rem 1rem;
+  padding: 2.5rem 1rem;
 }
 
 .container {
   width: 100%;
-  max-width: 560px;
+  max-width: 540px;
 }
+
+/* Hero */
 
 .hero {
   text-align: center;
-  margin-bottom: 2rem;
+  margin-bottom: 2.75rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.4rem;
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
 }
 
 .hero h1 {
   margin: 0;
-  font-size: 2.5rem;
-  letter-spacing: 0.02em;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 3rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.starburst {
+  display: block;
+  margin: 0.5rem auto;
+  width: 22px;
+  height: 22px;
+  color: var(--accent);
 }
 
 .subtitle {
-  margin: 0.5rem 0 0;
+  margin: 0;
   color: var(--muted);
+  font-size: 0.95rem;
 }
 
-.controls {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1.5rem;
-  text-align: center;
-}
-
-.record-row {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.record-btn {
-  font-size: 1.1rem;
-  font-weight: 600;
-  padding: 0.75rem 2rem;
-  border: none;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.record-btn:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.record-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.duration-picker {
-  color: var(--muted);
-  font-size: 0.9rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.duration-picker select {
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.35rem 0.5rem;
-}
-
-.status {
-  margin: 1rem 0 0;
-  min-height: 1.25rem;
-  color: var(--muted);
-}
-
-.error {
-  margin-top: 1rem;
-  padding: 0.9rem 1rem;
-  background: rgba(255, 107, 107, 0.12);
-  border: 1px solid var(--error);
-  border-radius: 8px;
-  color: var(--error);
-}
+/* Result — band poster */
 
 .result {
-  margin-top: 1.5rem;
+  margin-bottom: 2rem;
+  animation: fade-in 0.5s ease;
 }
 
-.result-card {
+.poster {
+  position: relative;
   display: flex;
-  gap: 1rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1rem;
+  gap: 1.25rem;
+  align-items: flex-start;
+  background: var(--cream);
+  border: 2px solid var(--ink);
+  box-shadow: 7px 7px 0 var(--accent);
+  padding: 1.5rem 1.25rem 1.25rem;
+}
+
+.poster-stamp {
+  position: absolute;
+  top: -0.7rem;
+  right: 1rem;
+  background: var(--accent);
+  color: var(--cream);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  padding: 0.3rem 0.7rem;
+  border: 2px solid var(--ink);
+  transform: rotate(-2deg);
+}
+
+.poster-cover {
+  width: 128px;
+  height: 128px;
+  flex-shrink: 0;
+  border: 2px solid var(--ink);
+  background: var(--bg);
 }
 
 .cover {
-  width: 96px;
-  height: 96px;
-  border-radius: 8px;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
-  flex-shrink: 0;
-  background: var(--bg);
+  display: block;
 }
 
 .cover.fallback {
@@ -140,38 +119,248 @@ body {
   align-items: center;
   justify-content: center;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
 }
 
-.result-body {
+.cover.fallback[hidden] {
+  display: none;
+}
+
+.poster-body {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  min-width: 0;
+  gap: 0.3rem;
+  padding-top: 0.75rem;
 }
 
 .song-name {
   margin: 0;
-  font-size: 1.2rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.4rem;
+  line-height: 1.15;
 }
 
-.artist,
-.genre,
-.score,
-.source {
+.artist {
   margin: 0;
+  font-weight: 600;
+  color: var(--accent);
+  font-size: 0.95rem;
+}
+
+.genre,
+.score {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.source {
+  margin-top: 0.6rem;
+  color: var(--accent);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.7rem;
+}
+
+/* Controls — the turntable */
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2.5rem;
+  margin-top: 120px;
+  margin-bottom: 20px;
+}
+
+.vinyl {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.vinyl:hover:not(:disabled) .vinyl-disc {
+  transform: scale(1.04);
+}
+
+.vinyl:disabled {
+  cursor: default;
+  opacity: 0.9;
+}
+
+.vinyl-disc {
+  position: relative;
+  width: 170px;
+  height: 170px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 42%),
+    repeating-radial-gradient(circle, #171310 0 2px, #0e0b09 2px 4px);
+  box-shadow:
+    0 8px 16px rgba(51, 39, 26, 0.25),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.vinyl-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--cream);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  box-shadow:
+    inset 0 0 0 3px rgba(255, 255, 255, 0.35),
+    inset 0 0 0 6px rgba(51, 39, 26, 0.2);
+}
+
+.vinyl-label::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.vinyl.spinning .vinyl-disc {
+  animation: spin 1.4s linear infinite;
+}
+
+.vinyl.spinning .vinyl-label {
+  animation: spin-center-reverse 1.4s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spin-center-reverse {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(-360deg);
+  }
+}
+
+.duration-picker {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.duration-picker select {
+  background: var(--cream);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+
+.status {
+  margin: 0.75rem 0 0;
+  min-height: 1.3rem;
   color: var(--muted);
   font-size: 0.9rem;
 }
 
-.source {
-  color: var(--accent);
-  margin-top: 0.4rem;
+/* Error — "not found" poster */
+
+.error {
+  margin-top: 1rem;
+  animation: jiggle 1s ease, fade-in 0.5s ease;
+
+}
+
+.poster-error {
+  border-color: var(--error);
+  box-shadow: 7px 7px 0 var(--error);
+}
+
+.poster-error .poster-stamp {
+  background: var(--error);
+}
+
+.error-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--error);
+  color: var(--cream);
+}
+
+.error-x {
+  width: 44px;
+  height: 44px;
+}
+
+.error-detail {
+  margin: 0;
+  padding-top: 0.1rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+@keyframes jiggle {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .footer {
   margin-top: 2.5rem;
   text-align: center;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.75rem;
 }

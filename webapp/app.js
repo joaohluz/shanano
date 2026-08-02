@@ -3,9 +3,12 @@
 import { startRecording } from "./audio.js";
 
 const recordBtn = document.getElementById("record-btn");
+const vinylLabel = document.getElementById("vinyl-label");
 const durationSelect = document.getElementById("duration");
 const statusLine = document.getElementById("status");
 const errorArea = document.getElementById("error");
+const errorText = document.getElementById("error-text");
+const errorStamp = document.getElementById("error-stamp");
 const resultCard = document.getElementById("result");
 
 let state = "idle"; // idle | recording | matching
@@ -13,7 +16,9 @@ let recording = null;
 
 function setState(next) {
   state = next;
-  recordBtn.textContent = next === "recording" ? "Stop" : "Record";
+  recordBtn.classList.toggle("spinning", next !== "idle");
+  vinylLabel.textContent =
+    next === "recording" ? "STOP" : next === "matching" ? "···" : "REC";
   recordBtn.disabled = next === "matching";
   durationSelect.disabled = next !== "idle";
 }
@@ -22,8 +27,9 @@ function setStatus(text) {
   statusLine.textContent = text;
 }
 
-function showError(message) {
-  errorArea.textContent = message;
+function showError(message, stamp = "OOPS") {
+  errorText.textContent = message;
+  errorStamp.textContent = stamp;
   errorArea.hidden = false;
 }
 
@@ -100,7 +106,7 @@ async function matchWav(wavBlob) {
 
   if (!response.ok) {
     if (response.status === 404) {
-      showError("No match found.");
+      showError("No match found.", "NO MATCH");
     } else if (response.status === 400) {
       showError("Could not decode that recording (or unsupported format).");
     } else {
