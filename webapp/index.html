@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shanano</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="container">
+    <header class="hero">
+      <h1>Shanano</h1>
+      <p class="subtitle">Record audio to find its match</p>
+    </header>
+
+    <section class="controls" aria-label="Recording controls">
+      <div class="record-row">
+        <button id="record-btn" type="button" class="record-btn">Record</button>
+        <label class="duration-picker" for="duration">
+          Duration
+          <select id="duration" name="duration">
+            <option value="5">5 s</option>
+            <option value="10" selected>10 s</option>
+            <option value="15">15 s</option>
+          </select>
+        </label>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="error" class="error" role="alert" hidden></section>
+
+    <section id="result" class="result" hidden>
+      <div class="result-card">
+        <img id="result-cover" class="cover" alt="Cover art" hidden />
+        <div id="result-cover-fallback" class="cover fallback" hidden>No cover</div>
+        <div class="result-body">
+          <h2 id="result-title" class="song-name"></h2>
+          <p id="result-artist" class="artist"></p>
+          <p id="result-genre" class="genre"></p>
+          <p id="result-score" class="score"></p>
+          <a id="result-source" class="source" href="#" target="_blank" rel="noopener" hidden>View source</a>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>Matching runs anonymously against the catalog. No account, no uploads.</p>
+    </footer>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

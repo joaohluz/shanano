@@ -1,17 +1,15 @@
-import tempfile
+import io
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
+from api.deps import get_db
 from audio_processing.audio import load_audio
 from audio_pipeline import AudioFingerprintPipeline
 from config import SUPPORTED_AUDIO_EXTENSIONS
 from core.logging import get_logger
 from core.match_service import NoMatchFoundError, match_audio
-from core.models import User
 from core.schemas import MatchResultOut
 
 router = APIRouter()
@@ -23,27 +21,29 @@ logger = get_logger("match")
 async def match_audio_endpoint(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
 ):
-    """Fingerprint the uploaded audio and return the best catalog match."""
+    """Fingerprint the uploaded audio and return the best catalog match.
+
+    Public (no auth): the webapp records audio from a mic and matches it
+    anonymously (see docs/webapp.md).
+    """
     filename = file.filename or ""
     ext = Path(filename).suffix.lower()
     if ext not in SUPPORTED_AUDIO_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Unsupported audio format")
 
-    tmp_path: Optional[Path] = None
+    # The client always sends WAV (ADR-0001), so decode from an in-memory
+    # buffer instead of spooling the upload to a named temp file.
+    buf = io.BytesIO(await file.read())
+    buf.seek(0)
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-            tmp.write(await file.read())
-            tmp_path = Path(tmp.name)
+        y, sr = load_audio(buf)
+        fingerprints = pipeline.run(y)
+    except Exception:
+        logger.warning("failed to decode or fingerprint audio", filename=filename)
+        raise HTTPException(status_code=400, detail="Could not decode audio file")
 
-        try:
-            y, sr = load_audio(tmp_path)
-            fingerprints = pipeline.run(y)
-        except Exception:
-            logger.warning("failed to decode or fingerprint audio", filename=filename)
-            raise HTTPException(status_code=400, detail="Could not decode audio file")
-
+    try:
         song, score, confidence = await match_audio(db, fingerprints)
         return MatchResultOut(
             song_name=song.name,
@@ -61,6 +61,3 @@ async def match_audio_endpoint(
         )
     except NoMatchFoundError:
         raise HTTPException(status_code=404, detail="No match found")
-    finally:
-        if tmp_path is not None:
-            tmp_path.unlink(missing_ok=True)

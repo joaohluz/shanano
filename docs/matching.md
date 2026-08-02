@@ -14,11 +14,10 @@ sequenceDiagram
     participant SVC as core/match_service.py
     participant PG as PostgreSQL
 
-    U->>API: POST /match/ (file, Bearer token)
+    U->>API: POST /match/ (file, no auth)
     API->>API: validate extension (.wav/.mp3/.flac/.ogg/.m4a)
-    %% current impl: temp file (see ADR-0001 for the planned BytesIO change)
-    API->>API: save to temp file
-    API->>API: load_audio(temp)
+    API->>API: decode from in-memory BytesIO (ADR-0001)
+    API->>API: load_audio(bytes_io)
     API->>P: pipeline.run(y) -> query fingerprints
     API->>SVC: match_audio(db, fingerprints)
 
@@ -34,12 +33,12 @@ sequenceDiagram
     API-->>U: 200 MatchResultOut (full metadata)
 ```
 
-The algorithm runs after the query audio is fingerprinted. Note the current
-endpoint saves the upload to a temp file first; **this is the target of
-[ADR-0001](decisions/0001-client-sends-wav-for-match.md)** — since we build the
-client and it always sends WAV, the endpoint will instead decode from an
-in-memory `io.BytesIO` and drop the temp file entirely. The matching core below
-is untouched by that change; it only ever sees fingerprints.
+The algorithm runs after the query audio is fingerprinted. The endpoint is
+**public** — no auth, so the mic-only webapp can match anonymously (see
+[webapp.md](webapp.md)). Per [ADR-0001](decisions/0001-client-sends-wav-for-match.md)
+the client always sends WAV, so the endpoint decodes straight from an in-memory
+`io.BytesIO` — there is no temp file. The matching core below only ever sees
+fingerprints.
 
 ## The algorithm (3 steps)
 
@@ -67,7 +66,7 @@ Both must clear for a match; otherwise `NoMatchFoundError` → HTTP 404
 
 | Module | Role |
 |---|---|
-| `api/routes/match.py` | Endpoint: validate, save temp, decode, fingerprint, call service, map result → `MatchResultOut`. Cleans up the temp file in `finally`. |
+| `api/routes/match.py` | Endpoint (public): validate, decode from in-memory `BytesIO`, fingerprint, call service, map result → `MatchResultOut`. |
 | `core/match_service.py` | `match_fingerprints` (lookup + voting), `match_audio` (thresholds + Song fetch), `get_matching_fingerprints_in_song` (helpers). |
 | `controllers/match_service.py` | The SQLite reference implementation this is ported from. |
 | `config.py` | `MATCH_MIN_SCORE`, `MATCH_MIN_CONFIDENCE`, `SUPPORTED_AUDIO_EXTENSIONS`. |
@@ -75,9 +74,10 @@ Both must clear for a match; otherwise `NoMatchFoundError` → HTTP 404
 
 ## Trigger
 
-`POST /match/` by any authenticated user. The query clip is fingerprinted with
-the exact same `AudioFingerprintPipeline` used to index catalog songs — this
-consistency is what makes the hashes comparable.
+`POST /match/` is **public** (anyone, no token) — the query clip is fingerprinted
+with the exact same `AudioFingerprintPipeline` used to index catalog songs — this
+consistency is what makes the hashes comparable. The mic-only webapp
+(`webapp/`, see [webapp.md](webapp.md)) calls this endpoint anonymously.
 
 ## Design choices
 
@@ -101,4 +101,4 @@ consistency is what makes the hashes comparable.
   a candidate optimization if the catalog grows (batch IN-clause lookups).
 - **Return metadata, not just an ID.** `MatchResultOut` carries artist/album/
   year/genre/cover art so the webapp can render a full result card (see
-  [auth.md](auth.md) for the auth gate).
+  [webapp.md](webapp.md)).

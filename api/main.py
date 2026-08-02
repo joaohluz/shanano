@@ -1,8 +1,10 @@
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from sqlalchemy import select, func
 
@@ -74,3 +76,11 @@ async def metrics():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# Serve the mic-only webapp (docs/webapp.md). Mounted LAST so API routes
+# (/docs, /openapi.json, /health, /metrics, /auth/*, /songs/*, /match/*) keep
+# priority; html=True makes "/" serve index.html. Resolved relative to this
+# file so it works regardless of the uvicorn working directory.
+WEBAPP_DIR = Path(__file__).resolve().parent.parent / "webapp"
+app.mount("/", StaticFiles(directory=WEBAPP_DIR, html=True), name="webapp")

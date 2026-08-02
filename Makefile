@@ -100,23 +100,16 @@ clip: ## Build a 15s WAV clip from the catalog-downloaded audio
 noise: ## Generate a random-noise WAV (used for the negative match check)
 	$(PYTHON) scripts/demo_audio.py noise
 
-match: ## Match /tmp/clip.wav against the catalog (expect 200 + metadata)
-	@TOKEN=$$(curl -s $(BASE)/auth/login -d "username=admin&password=admin" \
-	  -H "Content-Type: application/x-www-form-urlencoded" \
-	  | $(PYTHON) -c "import sys,json;print(json.load(sys.stdin)['access_token'])") ; \
-	curl -s $(BASE)/match/ -H "Authorization: Bearer $$TOKEN" -F "file=@/tmp/clip.wav" \
-	  | $(PYTHON) -m json.tool
+match: ## Match /tmp/clip.wav against the catalog (public — expect 200 + metadata)
+	curl -s $(BASE)/match/ -F "file=@/tmp/clip.wav" | $(PYTHON) -m json.tool
 
-negative: noise ## Negative match cases: noise=404, no-token=401, bad-format=400
-	@TOKEN=$$(curl -s $(BASE)/auth/login -d "username=admin&password=admin" \
-	  -H "Content-Type: application/x-www-form-urlencoded" \
-	  | $(PYTHON) -c "import sys,json;print(json.load(sys.stdin)['access_token'])") ; \
+negative: noise ## Negative match cases: noise=404, anon-match=200, bad-format=400
 	curl -s -o /dev/null -w "noise: %{http_code}\n" $(BASE)/match/ \
-	  -H "Authorization: Bearer $$TOKEN" -F "file=@/tmp/noise.wav" ; \
-	curl -s -o /dev/null -w "no-token: %{http_code}\n" -X POST $(BASE)/match/ \
+	  -F "file=@/tmp/noise.wav" ; \
+	curl -s -o /dev/null -w "anon-match: %{http_code}\n" $(BASE)/match/ \
 	  -F "file=@/tmp/clip.wav" ; \
 	curl -s -o /dev/null -w "bad-format: %{http_code}\n" $(BASE)/match/ \
-	  -H "Authorization: Bearer $$TOKEN" -F "file=@/tmp/clip.wav;type=text/plain;filename=clip.txt"
+	  -F "file=@/tmp/clip.wav;type=text/plain;filename=clip.txt"
 
 # --- terminal 2: upload a local WAV as a song ---
 

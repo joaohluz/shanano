@@ -22,13 +22,13 @@ Learning project: turning a minimal Shazam clone into a distributed, observable,
 - `api/main.py` — FastAPI app factory with lifespan, /metrics endpoint, HTTP middleware
 - `api/deps.py` — DB session dependency injection
 - `api/routes/songs.py` — song CRUD + WAV upload endpoint
-- `api/routes/match.py` — match endpoint (stub, returns 501)
+- `api/routes/match.py` — match endpoint (public, no auth; WAV query decoded from in-memory BytesIO per ADR-0001)
 - `api/routes/auth.py` — planned: register (admin-only), login, /me (Iteration 4)
 - `core/catalog_service.py` — planned: Internet Archive catalog fetch + metadata extraction (Iteration 4)
 - `core/match_service.py` — planned: async fingerprint matching ported from `controllers/match_service.py` (Iteration 4)
 - `core/security.py` — planned: bcrypt hashing + JWT create/verify (Iteration 4)
 - `catalog_fetch.py` — planned: CLI entrypoint for one IA fetch batch (Iteration 4)
-- `webapp/` — planned: static HTML/JS SPA (login/upload/match) served by FastAPI (Iteration 4)
+- `webapp/` — static mic-only SPA (record ~5–15 s → match anonymously), no build step; served by FastAPI via `StaticFiles` (spec: `docs/webapp.md`)
 - `core/models.py` — SQLAlchemy models (Song with status tracking, Fingerprint)
 - `core/schemas.py` — Pydantic schemas for request/response
 - `core/database.py` — async engine + session factory (reads DATABASE_URL env var)
@@ -155,7 +155,7 @@ Goals: populate the catalog automatically from a safe open-source source, secure
 - **Non-WAV audio**: `load_audio` uses `librosa.load`, which decodes WAV/FLAC/OGG via soundfile and MP3 via audioread. No functional blocker. Two changes needed:
   1. Add `ffmpeg` to `infra/Dockerfile` so MP3s decode reliably in the container.
   2. Relax `.wav`-only checks in `POST /songs/` and `POST /match/` to accept `.wav .mp3 .flac .ogg .m4a`.
-- **Endpoint protection**: `POST /songs/` any authed user, `DELETE /songs/{id}` admin-only, `POST /match/` any authed user. `GET /songs*`, `/health`, `/metrics` stay public (loadgen + Prometheus need them). loadgen updated to log in once and send `Authorization: Bearer`.
+- **Endpoint protection**: `POST /songs/` any authed user, `DELETE /songs/{id}` admin-only, `POST /match/` **public** (anonymous — the mic-only webapp matches without an account, see `docs/webapp.md`). `GET /songs*`, `/health`, `/metrics` stay public (loadgen + Prometheus need them).
 - **Client match queries are always WAV (ADR-0001)**: since we build the client, it always sends WAV (16-bit PCM) for `POST /match/`. Matching is format-agnostic (both sides normalize to mono 22050 Hz, codec-robust peak hashes), so WAV queries match MP3/FLAC catalog entries fine. This lets `POST /match/` decode from an in-memory `BytesIO` and drop its temp-file step (the temp file only existed because `audioread` needs a path for MP3/M4A). Server-side decode of catalog audio (FLAC/OGG/MP3/M4A) is unaffected. Full writeup: `docs/decisions/0001-client-sends-wav-for-match.md`.
 
 #### Phases
@@ -164,14 +164,13 @@ Goals: populate the catalog automatically from a safe open-source source, secure
 2. **IA catalog job** — `core/catalog_service.py`: query `https://archive.org/advancedsearch.php` (configurable collection), fetch `https://archive.org/metadata/{identifier}` (extract creator/title/date/subject, cover art via `https://archive.org/services/img/{identifier}`), download audio from `https://archive.org/download/{identifier}/{file}` to `UPLOAD_DIR`, insert `Song(status=pending, ..., source="internet_archive")`, dedupe by `source_url`. `catalog_fetch.py` = CLI for one batch (`CATALOG_MAX_ITEMS`, default 5). Unit tests with mocked httpx.
 3. **Auth** — deps `PyJWT` + `bcrypt`; `core/security.py` (hash/verify + token create/decode); `User` model + migration (`id`, `username` unique, `hashed_password`, `role`, `created_at`); `api/routes/auth.py`: `POST /auth/register` (admin-only), `POST /auth/login` (OAuth2PasswordRequestForm → JWT), `GET /auth/me`; `api/deps.py`: `get_current_user`, `require_admin` (OAuth2PasswordBearer).
 4. **Real matching** — port `controllers/match_service.py` (SQLite) to async SQLAlchemy in `core/match_service.py`: hash lookup → offset voting → best candidate → full Song. `POST /match/` runs `load_audio → pipeline.run → match`, returns `MatchResultOut` with all metadata.
-5. **Webapp** — `webapp/` static HTML/JS (no build step): login (JWT in localStorage), upload (file + optional metadata), match (shows result card with cover art + full metadata). Mounted via FastAPI `StaticFiles`.
+5. **Webapp** — `webapp/` static mic-only SPA (no build step): record from the mic → encode WAV in the browser → `POST /match/` anonymously → result card with cover art + full metadata. Mounted via FastAPI `StaticFiles`. Spec: `docs/webapp.md`.
 6. **K8s** — `k8s/10-catalog-cronjob.yaml` (mounts `uploads-pvc`, env from configmap + secret), `k8s/secret.yaml` (JWT secret, admin creds), configmap keys (`CATALOG_COLLECTION`, `CATALOG_MAX_ITEMS`, `JWT_*`). Update docker-compose (ffmpeg, auth env, catalog service), `k8s/README.md`, `README.md`, AGENTS.md.
 7. **Tests** — update `test_songs_api.py`/`test_worker.py` for auth (admin + user token fixtures); new `test_catalog_service.py`, `test_auth.py`, `test_match_api.py`.
 
 #### Open questions to refine before implementation
 
 - CronJob schedule (proposed: every 30 min) and batch sizing vs the 1Gi `uploads-pvc` + serial worker.
-- Whether `POST /match/` should stay behind auth for the webapp demo.
 - Which IA file formats to prefer (FLAC/OGG first, MP3 fallback) given the serial worker.
 
 ### 🔜 Upcoming Iterations (beyond 4)
@@ -190,7 +189,7 @@ shanano/
 │   └── routes/
 │       ├── __init__.py
 │       ├── songs.py         # Song CRUD + WAV upload
-│       ├── match.py         # Match endpoint (stub)
+│       ├── match.py         # Match endpoint (public, BytesIO decode)
 │       └── auth.py          # Iteration 4: register (admin-only), login, /me
 ├── core/
 │   ├── __init__.py
@@ -235,7 +234,7 @@ shanano/
 │       └── dashboards/      # Pre-built 6-panel dashboard
 ├── airflow/                 # Placeholder for Iteration 5
 ├── kafka/                   # Placeholder for Iteration 6
-├── webapp/                  # Iteration 4: static HTML/JS SPA (login/upload/match)
+├── webapp/                  # Mic-only SPA: index.html, styles.css, app.js, audio.js
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py           # Async SQLite engine + fixtures
@@ -249,6 +248,7 @@ shanano/
 │       ├── __init__.py
 │       ├── test_songs_api.py
 │       ├── test_match_api.py
+│       ├── test_webapp.py
 │       ├── test_song_service.py
 │       └── test_worker.py
 ├── audio_processing/        # DSP modules (existing)

@@ -167,12 +167,14 @@ class TestProtectedRoutes:
         )
         assert response.status_code == 401
 
-    async def test_match_requires_auth(self, client):
+    async def test_match_is_public(self, client):
+        # POST /match/ is public (webapp matches anonymously); an undecodable
+        # body is a 400 decode error, not a 401 auth rejection.
         response = await client.post(
             "/match/",
             files={"file": ("test.wav", b"content", "audio/wav")},
         )
-        assert response.status_code == 401
+        assert response.status_code == 400
 
     async def test_user_can_upload(self, client, auth_headers):
         response = await client.post(

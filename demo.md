@@ -57,8 +57,8 @@ make songs        # list songs w/ metadata (public API)
 make status       # id/status/fingerprint_count only
 make auth         # run the 8 auth checks
 make clip         # cut a 15s clip from the catalog song
-make match        # match the clip (expect 200 + metadata)
-make negative     # noise=404 / no-token=401 / bad-format=400
+make match        # match the clip (public, no token — expect 200 + metadata)
+make negative     # noise=404 / anon-match=200 / bad-format=400
 make upload       # upload data/assets/clean_wavs/music-hd-0001.wav
 make clean        # remove demo DB + temp clip/noise
 ```
@@ -248,15 +248,13 @@ The helper reads the catalog song's actual `file_path` from the DB (the most
 recently completed song), so it always clips the right file even if other audio
 sits in `data/uploads/`.
 
-### 3b. Match it (authenticated)
+### 3b. Match it (public — no token needed)
+
+`POST /match/` is now **public** (see `docs/webapp.md`): the mic-only webapp
+matches anonymously, so the demo needs no login either.
 
 ```bash
-TOKEN=$(curl -s $BASE/auth/login -d "username=admin&password=admin" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
-
 curl -s $BASE/match/ \
-  -H "Authorization: Bearer $TOKEN" \
   -F "file=@/tmp/clip.wav" | python3 -m json.tool
 ```
 
@@ -270,18 +268,18 @@ genre, cover art URL, source URL) plus `score` and `confidence`
 # Random noise must NOT match → expect 404 (thresholds reject weak hits)
 python3 scripts/demo_audio.py noise   # or: make noise
 curl -s -o /dev/null -w "noise: %{http_code}\n" $BASE/match/ \
-  -H "Authorization: Bearer $TOKEN" -F "file=@/tmp/noise.wav"   # 404
+  -F "file=@/tmp/noise.wav"                                   # 404
 
-# No token → expect 401
-curl -s -o /dev/null -w "no-token: %{http_code}\n" -X POST $BASE/match/ \
-  -F "file=@/tmp/clip.wav"                                      # 401
+# Anonymous match works → expect 200 (endpoint is public, no Bearer header)
+curl -s -o /dev/null -w "anon-match: %{http_code}\n" $BASE/match/ \
+  -F "file=@/tmp/clip.wav"                                    # 200
 
 # Unsupported extension → expect 400
 curl -s -o /dev/null -w "bad-format: %{http_code}\n" $BASE/match/ \
-  -H "Authorization: Bearer $TOKEN" -F "file=@/tmp/clip.wav;type=text/plain;filename=clip.txt"  # 400
+  -F "file=@/tmp/clip.wav;type=text/plain;filename=clip.txt"  # 400
 ```
 
-Expected: `noise: 404`, `no-token: 401`, `bad-format: 400`.
+Expected: `noise: 404`, `anon-match: 200`, `bad-format: 400`.
 
 ---
 
@@ -312,5 +310,6 @@ rm -f /tmp/shanano_demo.db /tmp/clip.wav /tmp/noise.wav
   ```
 - A match returns a candidate only when it clears both thresholds: `score >= 2`
   and `confidence >= 0.2` (tunable via `MATCH_MIN_SCORE` / `MATCH_MIN_CONFIDENCE`).
-- Only the terminal demo is shown here. A web UI (login / upload / match) lands
-  in a later phase — the endpoints it will call are the ones above.
+- Only the terminal demo is shown here. A mic-only web UI (no login, no file
+  upload) that calls `POST /match/` anonymously is specified in
+  `docs/webapp.md` — the endpoints it calls are the ones above.

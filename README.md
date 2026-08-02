@@ -11,7 +11,7 @@ The system processes audio through several steps:
 3. **Peak Detection**: Find prominent spectral peaks above a threshold
 4. **Fingerprint Generation**: Create unique hashes from peak pairs within time windows
 5. **Database Storage**: Store fingerprints with song metadata
-6. **Matching**: Compare query fingerprints against database to find matches (not yet wired)
+6. **Matching**: Compare query fingerprints against database to find matches
 
 ## Current Status (Iterations 1–3 — complete)
 
@@ -23,8 +23,8 @@ Goals: populate the catalog automatically from a safe open-source source, secure
 - **Scheduler**: Kubernetes CronJob runs `catalog_fetch.py` on a schedule. Airflow is not deployed this iteration, but the fetch script is written to be reusable as an Airflow task later.
 - **Auth**: JWT (HS256) + roles (`admin`/`user`); registration is admin-only; `admin` + `loadgen` users seeded via env.
 - **Non-WAV audio**: add `ffmpeg` to the Docker image and relax `.wav`-only upload/match checks to `.wav .mp3 .flac .ogg .m4a`.
-- **Endpoints**: upload/match require auth, delete is admin-only; song listing, `/health`, `/metrics` stay public.
-- **Webapp**: static HTML/JS SPA served by FastAPI — login, upload, and match (result card with cover art + full metadata).
+- **Endpoints**: upload requires auth, delete is admin-only; song listing, `/match/`, `/health`, `/metrics` are public.
+- **Webapp**: static mic-only SPA served by FastAPI — record ~5–15 s from the mic, match anonymously, result card with cover art + full metadata.
 
 ### What's built
 
@@ -52,7 +52,7 @@ Goals: populate the catalog automatically from a safe open-source source, secure
 | `GET` | `/songs/{id}` | Get song details |
 | `POST` | `/songs/` | Upload a WAV file (saves to volume, queues for processing) |
 | `DELETE` | `/songs/{id}` | Delete a song and its fingerprints |
-| `POST` | `/match/` | Match audio (not yet implemented — returns 501) |
+| `POST` | `/match/` | Match an uploaded audio clip (public, no auth) — returns the best catalog song with full metadata |
 
 ### Processing Flow
 
@@ -118,6 +118,24 @@ open http://localhost:8000/docs
 # Grafana dashboard
 open http://localhost:3000
 ```
+
+### Web Client (mic-only matching)
+
+A static, same-origin web app (`webapp/`, served by FastAPI at `/`) lets anyone
+record ~5–15 s of music from their microphone and match it against the catalog —
+no login, no file upload. `POST /match/` is public so matching works
+anonymously.
+
+```bash
+# With the API running (uvicorn api.main:app or docker compose up):
+open http://localhost:8000
+```
+
+Allow the mic, pick a duration (5/10/15 s), press **Record**, and a result card
+shows the matching song's cover art, artist/album/year, genre, score +
+confidence, and a link to the source. Silence or unknown audio shows "No match
+found"; denying the mic shows a permission message. See `docs/webapp.md` for the
+full spec.
 
 ### Running Tests
 

@@ -60,7 +60,7 @@ sequenceDiagram
 | `POST /auth/login` | no | — |
 | `GET /health`, `/metrics`, `GET /songs*` | **no** (public) | loadgen + Prometheus need them |
 | `POST /songs/` (upload) | yes | any user |
-| `POST /match/` | yes | any user |
+| `POST /match/` | **no** (public) | the mic-only webapp matches anonymously (see [webapp.md](webapp.md)) |
 | `DELETE /songs/{id}` | yes | **admin only** |
 | `POST /auth/register` | yes | **admin only** |
 | `GET /auth/me` | yes | any user |
